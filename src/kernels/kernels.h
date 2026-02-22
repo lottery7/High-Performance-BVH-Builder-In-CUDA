@@ -7,8 +7,6 @@
 
 namespace cuda
 {
-  void aplusb(const cudaStream_t& stream, const unsigned int* a, const unsigned int* b, unsigned int* c, size_t n);
-
   template <typename T>
   void fill(const cudaStream_t& stream, T* arr, T val, size_t n);
 

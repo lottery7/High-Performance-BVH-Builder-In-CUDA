@@ -1,14 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(HighPerformanceBVHBuilderInCUDA)
+project(HighPerformanceBVHBuilderInCUDA LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
-
-## GTest позволяет писать удобные unit-test-ы
-#find_package(GTest REQUIRED)
-#set(GTEST_LIBRARIES GTest::gtest)
-#set(GTEST_MAIN_LIBRARIES GTest::gtest_main)
-#set(GTEST_BOTH_LIBRARIES ${GTEST_LIBRARIES} ${GTEST_MAIN_LIBRARIES})
+set(CMAKE_CUDA_STANDARD 17)
 
 # OpenMP позволит распараллеливать циклы на все ядра процессора простыми директивами
 find_package(OpenMP)
@@ -59,13 +54,12 @@ set(LIBRARIES
 
 enable_language(CUDA)
 find_package(CUDAToolkit REQUIRED)
+find_package(Thrust REQUIRED CONFIG)
 
 # Компиляция CUDA происходит NVCC компилятором, все файлы с расширением .cu компилируются два раза:
 # 1) один раз обычным компилятором - для HOST-side кода, компилируются только те функции которые не помечены специально что они для видеокарты (или помечены что они и для видеокарты и для HOST-side кода)
 # 2) второй раз специальным CUDA-компилятором NVCC - для DEVICE-side кода, например функции помеченные специальным модификатором __global__ (кернелы) или __device__ (функции которые можно вызвать на видеокарте, т.е. из кернелов)
-# Вероятно вам стоит выставить в CMake options: -DCMAKE_CUDA_ARCHITECTURES=75 -DCMAKE_CUDA_FLAGS=-lineinfo (первое - чтобы включить поддержку WMMA, второе - чтобы compute-sanitizer и профилировщик знали номера строк кернела)
 set(CUDA_SOURCES
-        src/kernels/cu/aplusb.cu
         src/kernels/cu/camera_helpers.cu
         src/kernels/cu/geometry_helpers.cu
         src/kernels/cu/random_helpers.cu
@@ -76,17 +70,13 @@ set(CUDA_SOURCES
 add_compile_definitions(
         CMAKE_CUDA_ARCHITECTURES=75
         CMAKE_CUDA_FLAGS=-lineinfo
+        THRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CUDA
 )
 
 add_library(${PROJECT_NAME}_core STATIC ${SOURCES} ${CUDA_SOURCES} ${HEADERS})
 target_link_libraries(${PROJECT_NAME}_core ${LIBRARIES})
 target_include_directories(${PROJECT_NAME}_core PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
 
-add_executable(main_aplusb src/main_aplusb.cpp)
-add_executable(main_linear_bvh src/main_linear_bvh.cpp)
-
-target_link_libraries(main_aplusb ${PROJECT_NAME}_core)
-target_link_libraries(main_linear_bvh ${PROJECT_NAME}_core)
-
-target_include_directories(main_aplusb PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-target_include_directories(main_linear_bvh PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+add_executable(run_experiments src/main.cpp)
+target_link_libraries(run_experiments ${PROJECT_NAME}_core)
+target_include_directories(run_experiments PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
