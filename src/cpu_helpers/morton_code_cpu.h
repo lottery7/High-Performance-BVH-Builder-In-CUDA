@@ -3,7 +3,7 @@
 #include "../kernels/shared_structs/morton_code_gpu_shared.h"
 
 // Helper: expand 10 bits into 30 bits by inserting 2 zeros between each bit
-unsigned int expandBits(unsigned int v)
+inline unsigned int expandBits(unsigned int v)
 {
   // Ensure we have only lowest 10 bits
   rassert(v == (v & 0x3FFu), 76389413321, v);
@@ -19,7 +19,7 @@ unsigned int expandBits(unsigned int v)
 
 // Convert 3D point in [0,1]^3 to 30-bit Morton code (10 bits per axis)
 // Values outside [0,1] are clamped.
-MortonCode morton3D(float x, float y, float z)
+inline MortonCode morton3D(float x, float y, float z)
 {
   // Map and clamp to integer grid [0, 1023]
   unsigned int ix = std::min(std::max((int)(x * 1024.0f), 0), 1023);

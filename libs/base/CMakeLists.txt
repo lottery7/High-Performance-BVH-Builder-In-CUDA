@@ -5,7 +5,6 @@ project(libbase)
 set(HEADERS
         libbase/data_type.h
         libbase/fast_random.h
-        libbase/gtest_utils.h
         libbase/math.h
         libbase/omp_utils.h
         libbase/platform.h
@@ -14,14 +13,13 @@ set(HEADERS
         libbase/string_utils.h
         libbase/thread_mutex.h
         libbase/timer.h
-        )
+)
 
 set(SOURCES
-        libbase/gtest_utils.cpp
         libbase/omp_utils.cpp
         libbase/string_utils.cpp
         libbase/thread_mutex.cpp
-        )
+)
 
 set(CMAKE_CXX_STANDARD 17)
 

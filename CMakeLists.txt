@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(GPGPUTasks)
+project(HighPerformanceBVHBuilderInCUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# GTest позволяет писать удобные unit-test-ы
-find_package(GTest REQUIRED)
-set(GTEST_LIBRARIES GTest::gtest)
-set(GTEST_MAIN_LIBRARIES GTest::gtest_main)
-set(GTEST_BOTH_LIBRARIES ${GTEST_LIBRARIES} ${GTEST_MAIN_LIBRARIES})
+## GTest позволяет писать удобные unit-test-ы
+#find_package(GTest REQUIRED)
+#set(GTEST_LIBRARIES GTest::gtest)
+#set(GTEST_MAIN_LIBRARIES GTest::gtest_main)
+#set(GTEST_BOTH_LIBRARIES ${GTEST_LIBRARIES} ${GTEST_MAIN_LIBRARIES})
 
 # OpenMP позволит распараллеливать циклы на все ядра процессора простыми директивами
 find_package(OpenMP)
@@ -35,12 +35,19 @@ set(HEADERS
         src/debug/debug_geometry.h
         src/debug/debug_bvh.h
         src/utils/utils.h
+        src/experiments/gpu_brute_force.h
+        src/utils/gpu_wrappers.h
+        src/experiments/cpu_lbvh.h
+        src/experiments/gpu_lbvh.h
 )
 
 set(SOURCES
         src/io/camera_reader.cpp
         src/io/scene_reader.cpp
         src/utils/cuda_utils.cpp
+        src/experiments/gpu_brute_force.cpp
+        src/experiments/cpu_lbvh.cpp
+        src/experiments/gpu_lbvh.cpp
 )
 
 set(LIBRARIES
