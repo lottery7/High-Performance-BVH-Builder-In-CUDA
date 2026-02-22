@@ -1,2 +1,12 @@
 # .clang-format
-BasedOnStyle: WebKit
+BasedOnStyle: Google
+AlignAfterOpenBracket: AlwaysBreak
+AllowAllArgumentsOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+BinPackArguments: false
+BinPackParameters: false
+ColumnLimit: 150
+SpacesBeforeTrailingComments: 2
+NamespaceIndentation: 'All'
+BreakBeforeBraces: Linux
+PenaltyReturnTypeOnItsOwnLine: 1000

@@ -1,23 +1,7 @@
-#ifndef morton_code_gpu_shared_pragma_once // pragma once
-#define morton_code_gpu_shared_pragma_once
+#pragma once
+#include <cstdint>
 
-#include "struct_helpers.h"
-
-/* Language-agnostic 32-bit unsigned */
-#if defined(__OPENCL_VERSION__)
-  /* OpenCL C */
-  #define MortonCode uint
-#else
-  /* C/C++/CUDA */
-  #include <stdint.h>
-  #define MortonCode uint32_t
-#endif
+#define MortonCode uint32_t
 
 /* ---------------- Host-only layout checks ---------------- */
-#if !defined(__OPENCL_VERSION__)
-  #if defined(__cplusplus)
-    static_assert(sizeof(MortonCode) == 4, "MortonCode must be 32-bit");
-  #endif
-#endif
-
-#endif // pragma once
+static_assert(sizeof(MortonCode) == 4, "MortonCode must be 32-bit");

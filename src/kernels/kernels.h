@@ -1,38 +1,38 @@
 #pragma once
 
-#include <libgpu/vulkan/engine.h>
+#include <driver_types.h>
 
-#include "shared_structs/camera_gpu_shared.h"
 #include "shared_structs/bvh_node_gpu_shared.h"
+#include "shared_structs/camera_gpu_shared.h"
 
-namespace cuda {
-void aplusb(const gpu::WorkSize& workSize, const gpu::gpu_mem_32u& a, const gpu::gpu_mem_32u& b, gpu::gpu_mem_32u& c, unsigned int n);
+namespace cuda
+{
+  void aplusb(const cudaStream_t& stream, const unsigned int* a, const unsigned int* b, unsigned int* c, size_t n);
 
-void ray_tracing_render_brute_force(const gpu::WorkSize &workSize,
-    const gpu::gpu_mem_32f &vertices, const gpu::gpu_mem_32u &faces,
-    gpu::gpu_mem_32i &framebuffer_face_id,
-    gpu::gpu_mem_32f &framebuffer_ambient_occlusion,
-    gpu::shared_device_buffer_typed<CameraViewGPU> camera,
-    unsigned int nfaces);
-void ray_tracing_render_using_lbvh(const gpu::WorkSize &workSize,
-    const gpu::gpu_mem_32f &vertices, const gpu::gpu_mem_32u &faces,
-    const gpu::shared_device_buffer_typed<BVHNodeGPU> &bvhNodes, const gpu::gpu_mem_32u &leafTriIndices,
-    gpu::gpu_mem_32i &framebuffer_face_id,
-    gpu::gpu_mem_32f &framebuffer_ambient_occlusion,
-    gpu::shared_device_buffer_typed<CameraViewGPU> camera,
-    unsigned int nfaces);
-}
+  template <typename T>
+  void fill(const cudaStream_t& stream, T* arr, T val, size_t n);
 
-namespace ocl {
-const ProgramBinaries& getAplusB();
+  void ray_tracing_render_brute_force(
+      const cudaStream_t& stream,
+      dim3 gridSize,
+      dim3 blockSize,
+      const float* vertices,
+      const unsigned int* faces,
+      int* framebuffer_face_id,
+      float* framebuffer_ambient_occlusion,
+      CameraViewGPU* camera,
+      unsigned int nfaces);
 
-const ProgramBinaries& getRTBruteForce();
-const ProgramBinaries& getRTWithLBVH();
-}
-
-namespace avk2 {
-const ProgramBinaries& getAplusB();
-
-const ProgramBinaries& getRTBruteForce();
-const ProgramBinaries& getRTWithLBVH();
-}
+  void ray_tracing_render_using_lbvh(
+      const cudaStream_t& stream,
+      dim3 gridSize,
+      dim3 blockSize,
+      const float* vertices,
+      const unsigned int* faces,
+      const BVHNodeGPU* bvhNodes,
+      const unsigned int* leafTriIndices,
+      int* framebuffer_face_id,
+      float* framebuffer_ambient_occlusion,
+      CameraViewGPU* camera,
+      unsigned int nfaces);
+}  // namespace cuda

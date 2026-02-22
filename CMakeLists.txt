@@ -4,19 +4,6 @@ project(GPGPUTasks)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# Если вы установили CUDA SDK - можете включить поддержку CUDA
-option(GPU_CUDA_SUPPORT "CUDA support." OFF)
-
-# GLSLC_BIN используйтся для компиляции Vulkan шейдеров (GLSL)
-if (NOT DEFINED GLSLC_BIN)
-    # В случае Linux глобальный glslc будет использован (вы его установили среди прочего в scripts/linux/install_vulkan_sdk.sh)
-    set(GLSLC_BIN glslc)
-    message(STATUS "Vulkan glslc compiler from system PATH will be used")
-else ()
-    # В случае Windows вам нужно указать его через CMake options: -DSPIR_CLANG_BIN="C:\Program Files\LLVM\bin\clang.exe" (установлен по инструкции scripts/windows/install_dependencies.txt)
-    message(STATUS "Vulkan glslc compiler is specified")
-endif ()
-
 # GTest позволяет писать удобные unit-test-ы
 find_package(GTest REQUIRED)
 set(GTEST_LIBRARIES GTest::gtest)
@@ -37,87 +24,62 @@ add_subdirectory(libs)
 
 set(HEADERS
         src/kernels/kernels.h
+        src/kernels/shared_structs/aabb_gpu_shared.h
+        src/kernels/shared_structs/bvh_node_gpu_shared.h
+        src/kernels/shared_structs/camera_gpu_shared.h
+        src/kernels/shared_structs/morton_code_gpu_shared.h
         src/io/camera_reader.h
         src/io/scene_reader.h
+        src/utils/cuda_utils.h
+        src/utils/exceptions.h
+        src/debug/debug_geometry.h
+        src/debug/debug_bvh.h
+        src/utils/utils.h
 )
 
 set(SOURCES
-        src/kernels/kernels.cpp
         src/io/camera_reader.cpp
         src/io/scene_reader.cpp
+        src/utils/cuda_utils.cpp
 )
 
 set(LIBRARIES
         libclew
-        libgpu
         libimages
-        libutils
         libjson
+        libbase
 )
 
-# compile_opencl CMake-функция объявлена в libs/gpu/libgpu/CMakeLists.txt:157
-# Она считывает все байты из файла src/kernels/cl/aplusb.cl (т.е. весь исходный код кернела), выполняет стадию препроцессора с помощью OPENCL_CXX_COMPILER компилятора (clang или gcc) - в т.ч. выполняя все #include
-# Получившийся после препроцессора исходник находится в файле src/kernels/cl/generated_kernels/aplusb_nospir_opencl120.cl
-# Затем получивщийся исходник преобразуется в массив байтов в файле src/kernels/cl/generated_kernels/aplusb_nospir_opencl120.h
-# (чтобы не нужно было в runtime читать исходник с диска, чтобы был монолитный исполняемый файл)
-# Обратите внимание что это происходит на этапе компиляции, кроме того эта команда делает так чтобы файл src/kernels/vk/aplusb.h был перечислен среди HEADERS для компиляции при вызове add_executable
-set(OPENCL_SOURCES
-        src/kernels/cl/aplusb.cl
-        src/kernels/cl/ray_tracing_render_brute_force.cl
-        src/kernels/cl/ray_tracing_render_using_lbvh.cl)
+enable_language(CUDA)
+find_package(CUDAToolkit REQUIRED)
 
-set(OPENCL_INCLUDES src/kernels/defines.h src/kernels/cl/helpers/rassert.cl src/kernels/cl/camera_helpers.cl src/kernels/cl/geometry_helpers.cl src/kernels/cl/random_helpers.cl src/kernels/shared_structs/aabb_gpu_shared.h src/kernels/shared_structs/bvh_node_gpu_shared.h src/kernels/shared_structs/camera_gpu_shared.h src/kernels/shared_structs/morton_code_gpu_shared.h src/kernels/shared_structs/struct_helpers.h)
-set(OPENCL_DEFINES)
-foreach(CL_FILE IN LISTS OPENCL_SOURCES)
-    compile_opencl(HEADERS ${CL_FILE} OPENCL_INCLUDES OPENCL_DEFINES)
-endforeach()
+# Компиляция CUDA происходит NVCC компилятором, все файлы с расширением .cu компилируются два раза:
+# 1) один раз обычным компилятором - для HOST-side кода, компилируются только те функции которые не помечены специально что они для видеокарты (или помечены что они и для видеокарты и для HOST-side кода)
+# 2) второй раз специальным CUDA-компилятором NVCC - для DEVICE-side кода, например функции помеченные специальным модификатором __global__ (кернелы) или __device__ (функции которые можно вызвать на видеокарте, т.е. из кернелов)
+# Вероятно вам стоит выставить в CMake options: -DCMAKE_CUDA_ARCHITECTURES=75 -DCMAKE_CUDA_FLAGS=-lineinfo (первое - чтобы включить поддержку WMMA, второе - чтобы compute-sanitizer и профилировщик знали номера строк кернела)
+set(CUDA_SOURCES
+        src/kernels/cu/aplusb.cu
+        src/kernels/cu/camera_helpers.cu
+        src/kernels/cu/geometry_helpers.cu
+        src/kernels/cu/random_helpers.cu
+        src/kernels/cu/ray_tracing_render_brute_force.cu
+        src/kernels/cu/ray_tracing_render_using_lbvh.cu
+        src/kernels/cu/fill.cu
+)
+add_compile_definitions(
+        CMAKE_CUDA_ARCHITECTURES=75
+        CMAKE_CUDA_FLAGS=-lineinfo
+)
 
-# compile_vulkan CMake-функция объявлена в libs/gpu/libgpu/vulkan/CMakeLists.txt:97
-# Она считывает все байты из файла src/kernels/vk/aplusb.comp (т.е. весь исходный код кернела), компилирует с помощью glslc компилятора (в т.ч. выполняя все #include)
-# Скомпилированный SPIR байткод находится в файле src/kernels/vk/generated_kernels/aplusb_comp_spirv_vulkan.spir
-# SPIR байткод можно проанализировать через рефлексию - запустив /usr/local/bin/spirv-reflect src/vk/generated_kernels/aplusb_comp_spirv_vulkan.spir
-# Затем получившийся скомпилированный SPIR байткод преобразует в массив байтов в файле src/kernels/vk/generated_kernels/aplusb_comp_spirv_vulkan.h
-# (чтобы не нужно было в runtime читать шейдер/байткод с диска, чтобы был монолитный исполняемый файл)
-# Обратите внимание что это происходит на этапе компиляции, кроме того эта команда делает так чтобы файл src/kernels/vk/aplusb_comp.h был перечислен среди HEADERS для компиляции при вызове add_executable
-set(VULKAN_SOURCES
-        src/kernels/vk/aplusb.comp
-        src/kernels/vk/ray_tracing_render_brute_force.comp
-        src/kernels/vk/ray_tracing_render_using_lbvh.comp)
+add_library(${PROJECT_NAME}_core STATIC ${SOURCES} ${CUDA_SOURCES} ${HEADERS})
+target_link_libraries(${PROJECT_NAME}_core ${LIBRARIES})
+target_include_directories(${PROJECT_NAME}_core PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
 
-set(VULKAN_DEFINES)
-foreach(VK_FILE IN LISTS VULKAN_SOURCES)
-    compile_vulkan(HEADERS ${VK_FILE} VULKAN_DEFINES)
-endforeach()
-
-if (GPU_CUDA_SUPPORT)
-    enable_language(CUDA)
-    find_package(CUDAToolkit REQUIRED)
-
-    # Компиляция CUDA происходит NVCC компилятором, все файлы с расширением .cu компилируются два раза:
-    # 1) один раз обычным компилятором - для HOST-side кода, компилируются только те функции которые не помечены специально что они для видеокарты (или помечены что они и для видеокарты и для HOST-side кода)
-    # 2) второй раз специальным CUDA-компилятором NVCC - для DEVICE-side кода, например функции помеченные специальным модификатором __global__ (кернелы) или __device__ (функции которые можно вызвать на видеокарте, т.е. из кернелов)
-    # Вероятно вам стоит выставить в CMake options: -DCMAKE_CUDA_ARCHITECTURES=75 -DCMAKE_CUDA_FLAGS=-lineinfo (первое - чтобы включить поддержку WMMA, второе - чтобы compute-sanitizer и профилировщик знали номера строк кернела)
-    set(CUDA_SOURCES
-            src/kernels/cu/aplusb.cu
-            src/kernels/cu/ray_tracing_render_brute_force.cu
-            src/kernels/cu/ray_tracing_render_using_lbvh.cu)
-
-    add_definitions(-DCUDA_SUPPORT)
-    add_library(${PROJECT_NAME}_core STATIC ${SOURCES} ${CUDA_SOURCES} ${HEADERS})
-    target_link_libraries(${PROJECT_NAME}_core ${LIBRARIES})
-    target_include_directories(${PROJECT_NAME}_core PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-else ()
-    add_library(${PROJECT_NAME}_core STATIC ${SOURCES} ${HEADERS})
-    target_link_libraries(${PROJECT_NAME}_core ${LIBRARIES})
-endif ()
-
-add_executable(main_aplusb     src/main_aplusb.cpp)
+add_executable(main_aplusb src/main_aplusb.cpp)
 add_executable(main_linear_bvh src/main_linear_bvh.cpp)
 
-target_link_libraries(main_aplusb     ${PROJECT_NAME}_core)
+target_link_libraries(main_aplusb ${PROJECT_NAME}_core)
 target_link_libraries(main_linear_bvh ${PROJECT_NAME}_core)
 
-if (GPU_CUDA_SUPPORT)
-    target_include_directories(main_aplusb     PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-    target_include_directories(main_linear_bvh PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-endif ()
+target_include_directories(main_aplusb PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+target_include_directories(main_linear_bvh PRIVATE ${CUDAToolkit_INCLUDE_DIRS})

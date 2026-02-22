@@ -1,14 +1,14 @@
 #pragma once
 
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "libbase/point.h"
 
 // Minimal scene container: triangles by vertex indices + positions
 struct SceneGeometry {
-    std::vector<point3f> vertices; // each vertex is (x, y, z)
-    std::vector<point3u> faces;    // each face is (v0, v1, v2) - indices of three vertices used in a triangle
+  std::vector<point3f> vertices;  // each vertex is (x, y, z)
+  std::vector<point3u> faces;     // each face is (v0, v1, v2) - indices of three vertices used in a triangle
 };
 
 // Loads geometry from Wavefront OBJ (supports v, f; polygons are fan-triangulated)
