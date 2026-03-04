@@ -1,10 +1,10 @@
 #include "../../utils/cuda_utils.h"
 #include "../defines.h"
-#include "../shared_structs/camera_gpu_shared.h"
-#include "camera_helpers.cu"
-#include "geometry_helpers.cu"
-#include "helpers/rassert.cu"
-#include "random_helpers.cu"
+#include "../helpers/rassert.cu"
+#include "../structs/camera_gpu.h"
+#include "../utils/camera_helpers.cu"
+#include "../utils/geometry_helpers.cu"
+#include "../utils/random_helpers.cu"
 
 // Cast a single ray and report if ANY triangle is hit
 __device__ bool any_hit_from(

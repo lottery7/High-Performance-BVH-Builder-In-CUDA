@@ -19,10 +19,10 @@ add_subdirectory(libs)
 
 set(HEADERS
         src/kernels/kernels.h
-        src/kernels/shared_structs/aabb_gpu_shared.h
-        src/kernels/shared_structs/bvh_node_gpu_shared.h
-        src/kernels/shared_structs/camera_gpu_shared.h
-        src/kernels/shared_structs/morton_code_gpu_shared.h
+        src/kernels/structs/aabb_gpu.h
+        src/kernels/structs/bvh_node_gpu.h
+        src/kernels/structs/camera_gpu.h
+        src/kernels/structs/morton_code_gpu.h
         src/io/camera_reader.h
         src/io/scene_reader.h
         src/utils/cuda_utils.h
@@ -61,18 +61,18 @@ find_package(Thrust REQUIRED CONFIG)
 # 1) один раз обычным компилятором - для HOST-side кода, компилируются только те функции которые не помечены специально что они для видеокарты (или помечены что они и для видеокарты и для HOST-side кода)
 # 2) второй раз специальным CUDA-компилятором NVCC - для DEVICE-side кода, например функции помеченные специальным модификатором __global__ (кернелы) или __device__ (функции которые можно вызвать на видеокарте, т.е. из кернелов)
 set(CUDA_SOURCES
-        src/kernels/cu/camera_helpers.cu
-        src/kernels/cu/geometry_helpers.cu
-        src/kernels/cu/random_helpers.cu
-        src/kernels/cu/ray_tracing_render_brute_force.cu
-        src/kernels/cu/ray_tracing_render_using_bvh.cu
-        src/kernels/cu/fill.cu
-        src/kernels/cu/fill_indices.cu
-        src/kernels/cu/compute_mortons.cu
-        src/kernels/cu/build_lbvh.cu
-        src/kernels/cu/build_aabb.cu
-        src/kernels/cu/build_aabb_leaves.cu
-        src/kernels/cu/sort_by_key.cu
+        src/kernels/utils/camera_helpers.cu
+        src/kernels/utils/geometry_helpers.cu
+        src/kernels/utils/random_helpers.cu
+        src/kernels/ray_tracing/ray_tracing_render_brute_force.cu
+        src/kernels/ray_tracing/ray_tracing_render_using_bvh.cu
+        src/kernels/utils/fill.cu
+        src/kernels/bvh_common/fill_indices.cu
+        src/kernels/bvh_common/compute_mortons.cu
+        src/kernels/lbvh/build_lbvh.cu
+        src/kernels/lbvh/build_aabb.cu
+        src/kernels/lbvh/build_aabb_leaves.cu
+        src/kernels/utils/sort_by_key.cu
 )
 add_compile_definitions(
         CMAKE_CUDA_ARCHITECTURES=75

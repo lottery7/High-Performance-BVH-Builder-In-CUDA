@@ -1,4 +1,4 @@
-#include "../shared_structs/camera_gpu_shared.h"
+#include "../structs/camera_gpu.h"
 
 // Normalize float3
 static __device__ float3 normalize3(const float3 v)

@@ -2,12 +2,12 @@
 
 #include "../../utils/cuda_utils.h"
 #include "../defines.h"
-#include "../shared_structs/bvh_node_gpu_shared.h"
-#include "../shared_structs/camera_gpu_shared.h"
-#include "camera_helpers.cu"
-#include "geometry_helpers.cu"
-#include "helpers/rassert.cu"
-#include "random_helpers.cu"
+#include "../helpers/rassert.cu"
+#include "../structs//bvh_node_gpu.h"
+#include "../structs/camera_gpu.h"
+#include "../utils/camera_helpers.cu"
+#include "../utils/geometry_helpers.cu"
+#include "../utils/random_helpers.cu"
 
 // BVH traversal: closest hit along ray
 __device__ bool bvh_closest_hit(

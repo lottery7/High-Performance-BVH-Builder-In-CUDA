@@ -1,5 +1,4 @@
 #pragma once
-#include <cstdint>
 
 /* Cross-kernel, padding-free camera structs.
    Rules:
@@ -23,8 +22,8 @@ typedef struct CameraIntrinsicsGPU {
   float cy;               /* [px] */
   float pixel_size_mm[2]; /* [mm] {sx, sy} */
   float focal_mm;         /* [mm] */
-  uint32_t width;         /* [px] */
-  uint32_t height;        /* [px] */
+  unsigned int width;     /* [px] */
+  unsigned int height;    /* [px] */
 } CameraIntrinsicsGPU;
 
 /* -------- Extrinsics --------
@@ -55,7 +54,7 @@ typedef struct CameraViewGPU {
   CameraIntrinsicsGPU K;
   CameraExtrinsicsGPU E;
   ViewSettingsGPU view;
-  uint32_t magic_bits_guard;
+  unsigned int magic_bits_guard;
 } CameraViewGPU;
 
 /* ---------------- Host-only layout checks ---------------- */

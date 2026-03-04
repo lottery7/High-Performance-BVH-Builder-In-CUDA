@@ -3,7 +3,7 @@
 #include <cuda_runtime.h>
 #include <float.h>
 
-#include "../shared_structs/aabb_gpu_shared.h"
+#include "../structs/aabb_gpu.h"
 
 namespace
 {

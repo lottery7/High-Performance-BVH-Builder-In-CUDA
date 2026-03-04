@@ -1,15 +1,13 @@
 #pragma once
 
-#include <cstdint>
-
-#include "aabb_gpu_shared.h"
+#include "aabb_gpu.h"
 
 // POD AABB struct with identical layout in C++ / CUDA / OpenCL / Vulkan C-like code.
 // Uses only scalar floats to avoid float3/vector alignment differences.
 typedef struct BVHNodeGPU {
   AABBGPU aabb;
-  uint32_t leftChildIndex;
-  uint32_t rightChildIndex;
+  unsigned int leftChildIndex;
+  unsigned int rightChildIndex;
 } BVHNodeGPU;
 
 /* ---------------- Host-only layout checks ---------------- */

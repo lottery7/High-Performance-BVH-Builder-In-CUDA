@@ -53,7 +53,6 @@ static void processScene(const std::string& scene_path, cudaStream_t stream, int
   std::cout << "Scene " << scene_name << " loaded to GPU: " << scene.vertices.size() << " vertices, " << scene.faces.size() << " faces in "
             << loading_data_time << " sec" << std::endl;
   std::cout << "Camera framebuffer size: " << width << "x" << height << std::endl;
-  
 
   // Brute force
   std::optional<RayTracingResult> bf_res;
@@ -69,7 +68,7 @@ static void processScene(const std::string& scene_path, cudaStream_t stream, int
     }
   }
 
-  // GPU LBVH (TODO)
+  // GPU LBVH
   {
     auto res = runGPULBVH(stream, scene_gpu, fb, results_dir, niters);
     if (bf_res) {

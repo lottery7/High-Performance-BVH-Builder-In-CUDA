@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "../kernels/shared_structs/camera_gpu_shared.h"
+#include "../kernels/structs/camera_gpu.h"
 
 // Parse file containing <VCGCamera .../> and <ViewSettings .../>
 CameraViewGPU loadViewState(const std::string& path);

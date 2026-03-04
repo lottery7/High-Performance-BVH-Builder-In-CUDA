@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 
-#include "../kernels/shared_structs/bvh_node_gpu_shared.h"
 #include "../io/scene_reader.h"
+#include "../kernels/structs/bvh_node_gpu.h"
 
 namespace debug
 {

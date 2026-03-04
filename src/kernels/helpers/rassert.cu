@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../defines.h"
+#include "../defines.h"
 
 #if RASSERT_ENABLED
 #define curassert(condition, error_code)                                      \

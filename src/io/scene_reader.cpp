@@ -543,7 +543,6 @@ SceneGeometry loadScene(const std::string& path)
       cMax.y = std::max(cMax.y, centroid.y);
       cMax.z = std::max(cMax.z, centroid.z);
     }
-
   }
   std::cout << "cMin: (" << cMin.x << ", " << cMin.y << ", " << cMin.z << ")\n";
   std::cout << "cMax: (" << cMax.x << ", " << cMax.y << ", " << cMax.z << ")\n";

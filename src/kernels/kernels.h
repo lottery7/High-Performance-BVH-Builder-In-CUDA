@@ -2,8 +2,8 @@
 
 #include <driver_types.h>
 
-#include "shared_structs/bvh_node_gpu_shared.h"
-#include "shared_structs/camera_gpu_shared.h"
+#include "structs/bvh_node_gpu.h"
+#include "structs/camera_gpu.h"
 
 namespace cuda
 {

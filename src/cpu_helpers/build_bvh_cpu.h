@@ -3,18 +3,17 @@
 #include <libbase/point.h>
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <set>
 #include <vector>
 
-#include "../kernels/shared_structs/aabb_gpu_shared.h"
-#include "../kernels/shared_structs/bvh_node_gpu_shared.h"
+#include "../kernels/structs/aabb_gpu.h"
+#include "../kernels/structs/bvh_node_gpu.h"
 #include "morton_code_cpu.h"
 
 // count leading zeros for 32-bit unsigned
-static inline int clz32(uint32_t x)
+static int clz32(uint32_t x)
 {
   if (x == 0u) return 32;
 #if defined(_MSC_VER)

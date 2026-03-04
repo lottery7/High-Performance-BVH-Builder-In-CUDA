@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../kernels/shared_structs/morton_code_gpu_shared.h"
+#include "../kernels/structs/morton_code_gpu.h"
 
 // Helper: expand 10 bits into 30 bits by inserting 2 zeros between each bit
 inline unsigned int expandBits(unsigned int v)
