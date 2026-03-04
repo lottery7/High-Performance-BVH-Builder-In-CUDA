@@ -19,11 +19,11 @@ namespace cuda
   template <typename T>
   void fill(const cudaStream_t& stream, T* arr, T val, size_t n)
   {
-    int grid = std::min(divCeil(n, DEFAULT_GROUP_SIZE), 65535);
+    size_t grid = compute_grid(n);
     fill_kernel<<<grid, DEFAULT_GROUP_SIZE, 0, stream>>>(arr, val, n);
-    CUDA_CHECK_KERNEL_ASYNC(stream);
   }
 
+  template void fill(const cudaStream_t& stream, unsigned int* arr, unsigned int val, size_t n);
   template void fill(const cudaStream_t& stream, int* arr, int val, size_t n);
   template void fill(const cudaStream_t& stream, float* arr, float val, size_t n);
 }  // namespace cuda

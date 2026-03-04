@@ -1,10 +1,17 @@
 #pragma once
 
+#include "../experiments/common.h"
 #include "../kernels/defines.h"
 #include "libimages/debug_io.h"
 #include "libimages/images.h"
 
+struct RayTracingResult;
 inline int divCeil(int a, int b) { return (a + b - 1) / b; }
+inline size_t divCeil(size_t a, size_t b)
+{
+  rassert(a + b > 0, 131997010);
+  return (a + b - 1) / b;
+}
 
 template <typename T>
 size_t countNonEmpty(const TypedImage<T>& image, T empty_value)
@@ -38,18 +45,14 @@ inline void saveFramebuffers(const std::string& results_dir, const std::string& 
   debug_io::dumpImage(results_dir + "/framebuffer_ambient_occlusion_" + suffix + ".bmp", debug_io::depthMapping(ao));
 }
 
-inline void validateAgainstBruteForce(
-    const image32f& bf_ao,
-    const image32i& bf_face_ids,
-    const image32f& cmp_ao,
-    const image32i& cmp_face_ids,
+inline void validateAgainstGroundTruth(
+    const RayTracingResult& ground_truth_res,
+    const RayTracingResult& cmp_res,
     unsigned int width,
-    unsigned int height,
-    uint64_t ao_error_code,
-    uint64_t face_error_code)
+    unsigned int height)
 {
-  unsigned int ao_errors = countDiffs(bf_ao, cmp_ao, 0.01f);
-  unsigned int face_errors = countDiffs(bf_face_ids, cmp_face_ids, 1);
-  rassert(ao_errors < width * height / 100, ao_error_code, ao_errors, to_percent(ao_errors, width * height));
-  rassert(face_errors < width * height / 100, face_error_code, face_errors, to_percent(face_errors, width * height));
+  unsigned int ao_errors = countDiffs(ground_truth_res.ao, cmp_res.ao, 0.01f);
+  unsigned int face_errors = countDiffs(ground_truth_res.face_ids, cmp_res.face_ids, 1);
+  rassert(ao_errors < width * height / 100, 345341512354123ULL, ao_errors, to_percent(ao_errors, width * height));
+  rassert(face_errors < width * height / 100, 3453415123546587ULL, face_errors, to_percent(face_errors, width * height));
 }

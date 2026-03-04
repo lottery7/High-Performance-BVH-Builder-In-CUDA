@@ -34,6 +34,7 @@ set(HEADERS
         src/utils/gpu_wrappers.h
         src/experiments/cpu_lbvh.h
         src/experiments/gpu_lbvh.h
+        src/experiments/common.h
 )
 
 set(SOURCES
@@ -64,8 +65,14 @@ set(CUDA_SOURCES
         src/kernels/cu/geometry_helpers.cu
         src/kernels/cu/random_helpers.cu
         src/kernels/cu/ray_tracing_render_brute_force.cu
-        src/kernels/cu/ray_tracing_render_using_lbvh.cu
+        src/kernels/cu/ray_tracing_render_using_bvh.cu
         src/kernels/cu/fill.cu
+        src/kernels/cu/fill_indices.cu
+        src/kernels/cu/compute_mortons.cu
+        src/kernels/cu/build_lbvh.cu
+        src/kernels/cu/build_aabb.cu
+        src/kernels/cu/build_aabb_leaves.cu
+        src/kernels/cu/sort_by_key.cu
 )
 add_compile_definitions(
         CMAKE_CUDA_ARCHITECTURES=75

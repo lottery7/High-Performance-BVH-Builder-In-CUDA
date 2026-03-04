@@ -13,5 +13,5 @@ typedef struct BVHNodeGPU {
 } BVHNodeGPU;
 
 /* ---------------- Host-only layout checks ---------------- */
-static_assert(sizeof(uint32_t) == 4, "GPUC_UINT must be 32-bit");
+static_assert(sizeof(unsigned int) == 4, "unsigned int must be 32-bit");
 static_assert(sizeof(BVHNodeGPU) == sizeof(AABBGPU) + 2 * 4, "BVHNodeGPU size mismatch");

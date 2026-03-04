@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -510,11 +511,44 @@ SceneGeometry loadPLY(const std::string& path)
 
 SceneGeometry loadScene(const std::string& path)
 {
+  std::optional<SceneGeometry> scene;
   if (ends_with(path, ".ply")) {
-    return loadPLY(path);
+    scene = loadPLY(path);
   } else if (ends_with(path, ".obj")) {
-    return loadOBJ(path);
+    scene = loadOBJ(path);
   } else {
     rassert(false, 324134123142132, path);
   }
+
+  point3f cMin, cMax;
+  for (size_t i = 0; i < scene->faces.size(); ++i) {
+    point3u face = scene->faces[i];
+    point3f v0 = scene->vertices[face.x];
+    point3f v1 = scene->vertices[face.y];
+    point3f v2 = scene->vertices[face.z];
+
+    point3f centroid;
+    centroid.x = (v0.x + v1.x + v2.x) * (1.0f / 3.0f);
+    centroid.y = (v0.y + v1.y + v2.y) * (1.0f / 3.0f);
+    centroid.z = (v0.z + v1.z + v2.z) * (1.0f / 3.0f);
+
+    if (i == 0) {
+      cMin = centroid;
+      cMax = centroid;
+    } else {
+      cMin.x = std::min(cMin.x, centroid.x);
+      cMin.y = std::min(cMin.y, centroid.y);
+      cMin.z = std::min(cMin.z, centroid.z);
+      cMax.x = std::max(cMax.x, centroid.x);
+      cMax.y = std::max(cMax.y, centroid.y);
+      cMax.z = std::max(cMax.z, centroid.z);
+    }
+
+  }
+  std::cout << "cMin: (" << cMin.x << ", " << cMin.y << ", " << cMin.z << ")\n";
+  std::cout << "cMax: (" << cMax.x << ", " << cMax.y << ", " << cMax.z << ")\n";
+  scene->cMin = cMin;
+  scene->cMax = cMax;
+
+  return *scene;
 }

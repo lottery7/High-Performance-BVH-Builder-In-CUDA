@@ -60,7 +60,7 @@ typedef struct CameraViewGPU {
 
 /* ---------------- Host-only layout checks ---------------- */
 static_assert(sizeof(float) == 4, "float must be 32-bit");
-static_assert(sizeof(uint32_t) == 4, "GPUC_UINT must be 32-bit");
+static_assert(sizeof(unsigned int) == 4, "unsigned int must be 32-bit");
 
 static_assert(sizeof(CameraIntrinsicsGPU) == (4 * 7 + 4 * 2), "Intrinsics size mismatch"); /* 7 floats + 2 uints = 36 bytes */
 static_assert(sizeof(CameraExtrinsicsGPU) == (9 + 3 + 3) * 4, "Extrinsics size mismatch");

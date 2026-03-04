@@ -5,6 +5,7 @@
 #define DEFAULT_GROUP_SIZE 256
 #define DEFAULT_GROUP_SIZE_X 16
 #define DEFAULT_GROUP_SIZE_Y 16
+#define MAX_GRID_SIZE 65535
 
 #define AO_SAMPLES 8
 #define NO_FACE_ID (-1)

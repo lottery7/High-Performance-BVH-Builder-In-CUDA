@@ -19,14 +19,13 @@
 // ---------------------------------------------
 // Experiment: GPU Ray Tracing with CPU LBVH
 // ---------------------------------------------
-CPULBVHResult runCPULBVH(
+RayTracingResult runCPULBVH(
     cudaStream_t stream,
     const SceneGeometry& scene,
     const SceneGPU& scene_gpu,
     FramebuffersGPU& fb,
     const std::string& results_dir,
-    int niters,
-    std::vector<double>& out_perf_mrays)
+    int niters)
 {
   const unsigned int width = fb.width;
   const unsigned int height = fb.height;
@@ -38,7 +37,7 @@ CPULBVHResult runCPULBVH(
   buildLBVH_CPU(scene.vertices, scene.faces, nodes_cpu, indices_cpu);
   double build_time = cpu_lbvh_t.elapsed();
 
-  std::cout << "CPU build LBVH in " << build_time << " sec" << std::endl;
+  std::cout << "CPU LBVH build took " << build_time << " seconds" << std::endl;
   std::cout << "CPU LBVH build performance: " << scene_gpu.nfaces * 1e-6f / build_time << " MTris/s" << std::endl;
 
   LBVHDataGPU lbvh(nodes_cpu, indices_cpu);
@@ -47,8 +46,8 @@ CPULBVHResult runCPULBVH(
 
   std::vector<double> rt_times;
   for (int iter = 0; iter < niters; ++iter) {
-    timer t;
-    cuda::ray_tracing_render_using_lbvh(
+    cuda::CudaTimer cuda_timer(stream);
+    cuda::ray_tracing_render_using_bvh(
         stream,
         dim3(divCeil(width, 16), divCeil(height, 16)),
         dim3(16, 16),
@@ -60,20 +59,17 @@ CPULBVHResult runCPULBVH(
         fb.ao,
         scene_gpu.camera,
         scene_gpu.nfaces);
-    rt_times.push_back(t.elapsed());
+    rt_times.push_back(cuda_timer.elapsed());
   }
 
   double mrays = width * height * AO_SAMPLES * 1e-6f / stats::median(rt_times);
   std::cout << "GPU with CPU LBVH ray tracing frame render times (in seconds) - " << stats::valuesStatsLine(rt_times) << std::endl;
   std::cout << "GPU with CPU LBVH ray tracing performance: " << mrays << " MRays/s" << std::endl;
-  out_perf_mrays.push_back(mrays);
+  std::cout << "GPU with CPU LBVH total frame time: " << build_time + stats::median(rt_times) << " seconds" << std::endl;
 
-  CPULBVHResult result;
-  result.lbvh_build_time = build_time;
-  result.rt_time_sum = stats::sum(rt_times);
+  RayTracingResult result;
   fb.readback(result.face_ids, result.ao);
   saveFramebuffers(results_dir, "with_cpu_lbvh", result.face_ids, result.ao);
 
-  // LBVHDataGPU освобождается здесь автоматически (RAII)
   return result;
 }

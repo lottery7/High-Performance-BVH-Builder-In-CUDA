@@ -15,9 +15,15 @@ struct SceneGPU {
 
   unsigned int nvertices = 0;
   unsigned int nfaces = 0;
+  point3f cMin;
+  point3f cMax;
 
-  SceneGPU(const SceneGeometry& scene, const CameraViewGPU& cam) : nvertices(scene.vertices.size()), nfaces(scene.faces.size())
+  SceneGPU(const SceneGeometry& scene, const CameraViewGPU& cam)
+      : nvertices(scene.vertices.size()), nfaces(scene.faces.size()), cMin(scene.cMin), cMax(scene.cMax)
   {
+    static_assert(sizeof(point3f) == 12);
+    static_assert(sizeof(point3u) == 12);
+
     CUDA_SAFE_CALL(cudaMalloc(reinterpret_cast<void**>(&vertices), 3 * nvertices * sizeof(float)));
     CUDA_SAFE_CALL(cudaMalloc(reinterpret_cast<void**>(&faces), 3 * nfaces * sizeof(unsigned int)));
     CUDA_SAFE_CALL(cudaMalloc(reinterpret_cast<void**>(&camera), sizeof(CameraViewGPU)));
@@ -52,7 +58,7 @@ struct FramebuffersGPU {
   {
     cuda::fill(stream, face_id, NO_FACE_ID, width * height);
     cuda::fill(stream, ao, NO_AMBIENT_OCCLUSION, width * height);
-    CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+    CUDA_CHECK_STREAM(stream);
   }
 
   void readback(image32i& out_face_ids, image32f& out_ao) const

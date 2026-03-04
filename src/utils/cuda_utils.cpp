@@ -7,8 +7,6 @@
 
 #include "exceptions.h"
 
-#define CUDA_KERNELS_ACCURATE_ERRORS_CHECKS true
-
 namespace cuda
 {
 
@@ -36,16 +34,6 @@ namespace cuda
         throw cuda_exception(message);
     }
   }
-
-  void checkKernelErrors(cudaStream_t stream, int line, bool synchronized)
-  {
-    reportError(cudaGetLastError(), line, "Kernel failed: ");
-    if (synchronized) {
-      reportError(cudaStreamSynchronize(stream), line, "Kernel failed: ");
-    }
-  }
-
-  void checkKernelErrors(cudaStream_t stream, int line) { checkKernelErrors(stream, line, CUDA_KERNELS_ACCURATE_ERRORS_CHECKS); }
 
   void selectCudaDevice(int argc, char** argv)
   {

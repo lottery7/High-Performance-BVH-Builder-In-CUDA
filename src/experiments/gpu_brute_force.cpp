@@ -5,20 +5,21 @@
 #include "../kernels/kernels.h"
 #include "../utils/gpu_wrappers.h"
 #include "../utils/utils.h"
+#include "common.h"
 #include "libbase/stats.h"
 #include "libbase/timer.h"
 
 // ---------------------------------------------
 // Experiment: GPU Ray Tracing without BVH (Brute Force)
 // ---------------------------------------------
-BruteForceResult runBruteForce(cudaStream_t stream, const SceneGPU& scene_gpu, const FramebuffersGPU& fb, const std::string& results_dir, int niters)
+RayTracingResult runBruteForce(cudaStream_t stream, const SceneGPU& scene_gpu, const FramebuffersGPU& fb, const std::string& results_dir, int niters)
 {
   const unsigned int width = fb.width;
   const unsigned int height = fb.height;
 
   std::vector<double> times;
   for (int iter = 0; iter < niters; ++iter) {
-    timer t;
+    cuda::CudaTimer cuda_timer(stream);
     cuda::ray_tracing_render_brute_force(
         stream,
         dim3(divCeil(width, 16), divCeil(height, 16)),
@@ -29,13 +30,12 @@ BruteForceResult runBruteForce(cudaStream_t stream, const SceneGPU& scene_gpu, c
         fb.ao,
         scene_gpu.camera,
         scene_gpu.nfaces);
-    times.push_back(t.elapsed());
+    times.push_back(cuda_timer.elapsed());
   }
 
   std::cout << "GPU brute force ray tracing frame render times (in seconds) - " << stats::valuesStatsLine(times) << std::endl;
 
-  BruteForceResult result;
-  result.total_time = stats::sum(times);
+  RayTracingResult result;
   fb.readback(result.face_ids, result.ao);
 
   rassert(countNonEmpty(result.face_ids, NO_FACE_ID) > width * height / 10, 2345123412);

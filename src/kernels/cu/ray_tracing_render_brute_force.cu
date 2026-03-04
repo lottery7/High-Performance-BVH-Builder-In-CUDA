@@ -152,6 +152,5 @@ namespace cuda
         framebuffer_ambient_occlusion,
         camera,
         nfaces);
-    CUDA_CHECK_KERNEL_ASYNC(stream);
   }
 }  // namespace cuda

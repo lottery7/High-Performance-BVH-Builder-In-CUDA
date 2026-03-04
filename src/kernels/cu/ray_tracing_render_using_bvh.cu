@@ -47,8 +47,10 @@ __device__ bool bvh_closest_hit(
       const int left = (int)node.leftChildIndex;
       const int right = (int)node.rightChildIndex;
 
-      if (sp < BVH_STACK_SIZE) stack[sp++] = left;
-      if (sp < BVH_STACK_SIZE) stack[sp++] = right;
+      // Если падает, то необходимо увеличить размер стека
+      curassert(sp + 1 < BVH_STACK_SIZE, 465130814);
+      stack[sp++] = left;
+      stack[sp++] = right;
 
       continue;
     }
@@ -113,8 +115,10 @@ __device__ bool any_hit_from(
       const int left = (int)node.leftChildIndex;
       const int right = (int)node.rightChildIndex;
 
-      if (sp < BVH_STACK_SIZE) stack[sp++] = left;
-      if (sp < BVH_STACK_SIZE) stack[sp++] = right;
+      // Если падает, то необходимо увеличить размер стека
+      curassert(sp + 1 < BVH_STACK_SIZE, 136015328);
+      stack[sp++] = left;
+      stack[sp++] = right;
 
       continue;
     }
@@ -148,7 +152,7 @@ __device__ inline void make_basis(const float3& n, float3& t, float3& b)
   b = cross_f3(n, t);
 }
 
-__global__ void ray_tracing_render_using_lbvh(
+__global__ void ray_tracing_render_using_bvh(
     const float* vertices,
     const unsigned int* faces,
     const BVHNodeGPU* bvhNodes,
@@ -234,7 +238,7 @@ __global__ void ray_tracing_render_using_lbvh(
 
 namespace cuda
 {
-  void ray_tracing_render_using_lbvh(
+  void ray_tracing_render_using_bvh(
       const cudaStream_t& stream,
       dim3 gridSize,
       dim3 blockSize,
@@ -247,7 +251,7 @@ namespace cuda
       CameraViewGPU* camera,
       unsigned int nfaces)
   {
-    ray_tracing_render_using_lbvh<<<gridSize, blockSize, 0, stream>>>(
+    ray_tracing_render_using_bvh<<<gridSize, blockSize, 0, stream>>>(
         vertices,
         faces,
         bvhNodes,
@@ -256,6 +260,5 @@ namespace cuda
         framebuffer_ambient_occlusion,
         camera,
         nfaces);
-    CUDA_CHECK_KERNEL_ASYNC(stream);
   }
 }  // namespace cuda
