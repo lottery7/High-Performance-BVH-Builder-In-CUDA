@@ -1,6 +1,6 @@
 #include <cuda_runtime.h>
 
-#include "../../utils/cuda_utils.h"
+#include "../../utils/utils.h"
 #include "../defines.h"
 #include "../structs/bvh_node_gpu.h"
 
@@ -17,7 +17,7 @@ __global__ void build_aabb_kernel(
   if (index >= nfaces) return;
 
   // Начинаем с leaf-узла
-  int node = (int)(nfaces - 1 + index);
+  int node = nfaces - 1 + index;
 
   // Поднимаемся к корню
   while (true) {
@@ -29,8 +29,8 @@ __global__ void build_aabb_kernel(
     if (old == 0u) break;  // первый поток - ждём второго
 
     // Второй поток: оба ребёнка готовы
-    int left = (int)lbvh[p].leftChildIndex;
-    int right = (int)lbvh[p].rightChildIndex;
+    int left = lbvh[p].leftChildIndex;
+    int right = lbvh[p].rightChildIndex;
 
     AABBGPU& la = lbvh[left].aabb;
     AABBGPU& ra = lbvh[right].aabb;
@@ -52,15 +52,15 @@ __global__ void compute_parents_kernel(unsigned int nfaces, const BVHNodeGPU* lb
 {
   unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-  // Корень
+  // Root
   if (index == 0) parent[0] = -1;
 
   // Internal nodes: 0 .. nfaces-2
   if (index < nfaces - 1) {
     unsigned int left = lbvh[index].leftChildIndex;
     unsigned int right = lbvh[index].rightChildIndex;
-    if (left < 2 * nfaces - 1) parent[left] = (int)index;
-    if (right < 2 * nfaces - 1) parent[right] = (int)index;
+    if (left < 2 * nfaces - 1) parent[left] = index;
+    if (right < 2 * nfaces - 1) parent[right] = index;
   }
 }
 

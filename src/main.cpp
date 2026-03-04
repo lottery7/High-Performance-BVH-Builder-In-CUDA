@@ -2,11 +2,9 @@
 #include <libbase/timer.h>
 
 #include <filesystem>
-#include <optional>
 
 #include "experiments/common.h"
 #include "experiments/cpu_lbvh.h"
-#include "experiments/gpu_brute_force.h"
 #include "experiments/gpu_lbvh.h"
 #include "io/camera_reader.h"
 #include "io/scene_reader.h"
@@ -16,7 +14,7 @@
 #include "utils/gpu_wrappers.h"
 #include "utils/utils.h"
 
-static void processScene(const std::string& scene_path, cudaStream_t stream, int niters)
+static void processScene(cudaStream_t stream, const std::string& scene_path, int niters)
 {
   std::cout << "____________________________________________________________________________________________" << std::endl;
 
@@ -47,33 +45,20 @@ static void processScene(const std::string& scene_path, cudaStream_t stream, int
   const unsigned int width = camera.K.width;
   const unsigned int height = camera.K.height;
 
-  SceneGPU scene_gpu(scene, camera);
-  FramebuffersGPU fb(width, height);
+  SceneGPU scene_gpu(stream, scene, camera);
+  FramebuffersGPU fb(stream, width, height);
 
   std::cout << "Scene " << scene_name << " loaded to GPU: " << scene.vertices.size() << " vertices, " << scene.faces.size() << " faces in "
             << loading_data_time << " sec" << std::endl;
   std::cout << "Camera framebuffer size: " << width << "x" << height << std::endl;
 
-  // Brute force
-  std::optional<RayTracingResult> bf_res;
-  if (scene.faces.size() < 1000) {
-    bf_res = runBruteForce(stream, scene_gpu, fb, results_dir, niters);
-  }
-
   // CPU LBVH
-  {
-    auto res = runCPULBVH(stream, scene, scene_gpu, fb, results_dir, niters);
-    if (bf_res) {
-      validateAgainstGroundTruth(*bf_res, res, width, height);
-    }
-  }
+  auto ground_truth = runCPULBVH(stream, scene, scene_gpu, fb, results_dir, niters);
 
   // GPU LBVH
   {
     auto res = runGPULBVH(stream, scene_gpu, fb, results_dir, niters);
-    if (bf_res) {
-      validateAgainstGroundTruth(*bf_res, res, width, height);
-    }
+    validateAgainstGroundTruth(ground_truth, res, width, height);
   }
 }
 
@@ -93,7 +78,7 @@ static void run(int argc, char** argv)
 
   std::cout << "Using " << AO_SAMPLES << " ray samples for ambient occlusion" << std::endl;
 
-  for (const std::string& scene_path : scenes) processScene(scene_path, stream, niters);
+  for (const std::string& scene_path : scenes) processScene(stream, scene_path, niters);
 
   CUDA_SAFE_CALL(cudaStreamDestroy(stream));
 }

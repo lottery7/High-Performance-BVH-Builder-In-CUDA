@@ -1,6 +1,3 @@
-#include <cuda_runtime.h>
-
-#include "../../utils/cuda_utils.h"
 #include "../../utils/utils.h"
 #include "../defines.h"
 
@@ -80,7 +77,16 @@ namespace cuda
       float cMaxZ,
       unsigned int* morton_codes)
   {
-    size_t grid = compute_grid(nfaces);
-    compute_mortons_kernel<<<grid, DEFAULT_GROUP_SIZE, 0, stream>>>(faces, vertices, nfaces, cMinX, cMinY, cMinZ, cMaxX, cMaxY, cMaxZ, morton_codes);
+    compute_mortons_kernel<<<compute_grid(nfaces), DEFAULT_GROUP_SIZE, 0, stream>>>(
+        faces,
+        vertices,
+        nfaces,
+        cMinX,
+        cMinY,
+        cMinZ,
+        cMaxX,
+        cMaxY,
+        cMaxZ,
+        morton_codes);
   }
 }  // namespace cuda

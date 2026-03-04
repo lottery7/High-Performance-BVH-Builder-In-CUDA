@@ -1,6 +1,6 @@
 #include <cstdio>
 
-#include "../../utils/cuda_utils.h"
+#include "../../utils/utils.h"
 #include "../defines.h"
 #include "../helpers/rassert.cu"
 #include "../structs//bvh_node_gpu.h"
@@ -24,8 +24,8 @@ __device__ bool bvh_closest_hit(
     float& outU,  // сюда нужно записать u рассчитанный в intersect_ray_triangle(..., t, u, v)
     float& outV)  // сюда нужно записать v рассчитанный в intersect_ray_triangle(..., t, u, v)
 {
-  const int rootIndex = 0;
-  const int leafStart = (int)nfaces - 1;
+  constexpr int rootIndex = 0;
+  const int leafStart = static_cast<int>(nfaces) - 1;
 
   float bestT = FLT_MAX;
   bool hit = false;
@@ -44,14 +44,10 @@ __device__ bool bvh_closest_hit(
 
     if (nodeIdx < leafStart) {
       // Внутренний узел
-      const int left = (int)node.leftChildIndex;
-      const int right = (int)node.rightChildIndex;
-
       // Если падает, то необходимо увеличить размер стека
       curassert(sp + 1 < BVH_STACK_SIZE, 465130814);
-      stack[sp++] = left;
-      stack[sp++] = right;
-
+      stack[sp++] = node.leftChildIndex;
+      stack[sp++] = node.rightChildIndex;
       continue;
     }
 
@@ -112,14 +108,10 @@ __device__ bool any_hit_from(
 
     if (nodeIdx < leafStart) {
       // Внутренний узел
-      const int left = (int)node.leftChildIndex;
-      const int right = (int)node.rightChildIndex;
-
       // Если падает, то необходимо увеличить размер стека
       curassert(sp + 1 < BVH_STACK_SIZE, 136015328);
-      stack[sp++] = left;
-      stack[sp++] = right;
-
+      stack[sp++] = node.leftChildIndex;
+      stack[sp++] = node.rightChildIndex;
       continue;
     }
 
@@ -177,7 +169,7 @@ __global__ void ray_tracing_render_using_bvh(
   int faceIdBest = -1;
 
   // Use BVH traversal instead of brute-force loop
-  bool hit = bvh_closest_hit(ray_origin, ray_direction, bvhNodes, leafTriIndices, nfaces, vertices, faces, tMin, tBest, faceIdBest, uBest, vBest);
+  bvh_closest_hit(ray_origin, ray_direction, bvhNodes, leafTriIndices, nfaces, vertices, faces, tMin, tBest, faceIdBest, uBest, vBest);
 
   const unsigned int idx = j * camera->K.width + i;
   framebuffer_face_id[idx] = faceIdBest;
@@ -240,8 +232,8 @@ namespace cuda
 {
   void ray_tracing_render_using_bvh(
       const cudaStream_t& stream,
-      dim3 gridSize,
-      dim3 blockSize,
+      unsigned int width,
+      unsigned int height,
       const float* vertices,
       const unsigned int* faces,
       const BVHNodeGPU* bvhNodes,
@@ -251,7 +243,7 @@ namespace cuda
       CameraViewGPU* camera,
       unsigned int nfaces)
   {
-    ray_tracing_render_using_bvh<<<gridSize, blockSize, 0, stream>>>(
+    ray_tracing_render_using_bvh<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         vertices,
         faces,
         bvhNodes,

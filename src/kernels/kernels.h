@@ -10,21 +10,10 @@ namespace cuda
   template <typename T>
   void fill(const cudaStream_t& stream, T* arr, T val, size_t n);
 
-  void ray_tracing_render_brute_force(
-      const cudaStream_t& stream,
-      dim3 gridSize,
-      dim3 blockSize,
-      const float* vertices,
-      const unsigned int* faces,
-      int* framebuffer_face_id,
-      float* framebuffer_ambient_occlusion,
-      CameraViewGPU* camera,
-      unsigned int nfaces);
-
   void ray_tracing_render_using_bvh(
       const cudaStream_t& stream,
-      dim3 gridSize,
-      dim3 blockSize,
+      unsigned int width,
+      unsigned int height,
       const float* vertices,
       const unsigned int* faces,
       const BVHNodeGPU* bvhNodes,

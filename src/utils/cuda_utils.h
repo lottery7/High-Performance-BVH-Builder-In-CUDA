@@ -4,7 +4,6 @@
 #include <driver_types.h>
 
 #include "libbase/string_utils.h"
-#include "utils.h"
 
 #define CUDA_SAFE_CALL(expr) cuda::reportError(expr, __LINE__)
 #define CUDA_CHECK_STREAM(expr) cuda::reportError(cudaStreamSynchronize(expr), __LINE__)
@@ -16,8 +15,6 @@ namespace cuda
   void reportError(cudaError_t err, int line, const ::std::string& prefix = ::std::string());
 
   void selectCudaDevice(int argc, char** argv);
-
-  inline size_t compute_grid(size_t n) { return std::min(divCeil(n, (size_t)DEFAULT_GROUP_SIZE), (size_t)MAX_GRID_SIZE); }
 
   class CudaTimer
   {

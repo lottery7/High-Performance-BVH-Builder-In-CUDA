@@ -1,8 +1,3 @@
-#include <cuda_runtime.h>
-
-#include <cstdio>
-
-#include "../../utils/cuda_utils.h"
 #include "../../utils/utils.h"
 #include "../defines.h"
 
@@ -19,8 +14,7 @@ namespace cuda
   template <typename T>
   void fill(const cudaStream_t& stream, T* arr, T val, size_t n)
   {
-    size_t grid = compute_grid(n);
-    fill_kernel<<<grid, DEFAULT_GROUP_SIZE, 0, stream>>>(arr, val, n);
+    fill_kernel<<<compute_grid(n), DEFAULT_GROUP_SIZE, 0, stream>>>(arr, val, n);
   }
 
   template void fill(const cudaStream_t& stream, unsigned int* arr, unsigned int val, size_t n);

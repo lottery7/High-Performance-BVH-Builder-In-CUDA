@@ -1,9 +1,6 @@
 #include "gpu_lbvh.h"
 
 #include <libbase/stats.h>
-#include <libbase/timer.h>
-#include <thrust/device_ptr.h>
-#include <thrust/sequence.h>
 #include <thrust/sort.h>
 
 #include <filesystem>
@@ -33,7 +30,6 @@ RayTracingResult runGPULBVH(cudaStream_t stream, const SceneGPU& scene_gpu, Fram
   CUDA_SAFE_CALL(cudaMallocAsync(&d_lbvh_nodes, sizeof(BVHNodeGPU) * (2 * nfaces - 1), stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_parent, sizeof(int) * (2 * nfaces - 1), stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_flags, sizeof(unsigned int) * (nfaces - 1), stream));
-
   CUDA_CHECK_STREAM(stream);
 
   float cMinX = scene_gpu.cMin.x;
@@ -45,7 +41,7 @@ RayTracingResult runGPULBVH(cudaStream_t stream, const SceneGPU& scene_gpu, Fram
   float cMaxZ = scene_gpu.cMax.z;
 
   std::vector<double> build_times;
-  for (int iter = 0; iter < niters; ++iter) {
+  for (int iter = 0; iter < niters + WARMUP_ITERS; ++iter) {
     cuda::CudaTimer cuda_timer(stream);
 
     cuda::fill_indices(stream, d_sorted_indices, nfaces);
@@ -54,7 +50,11 @@ RayTracingResult runGPULBVH(cudaStream_t stream, const SceneGPU& scene_gpu, Fram
     cuda::build_lbvh(stream, d_morton_codes, nfaces, d_lbvh_nodes);
     cuda::build_aabb_leaves(stream, scene_gpu.vertices, scene_gpu.faces, d_sorted_indices, nfaces, d_lbvh_nodes);
     cuda::build_aabb(stream, nfaces, d_lbvh_nodes, d_parent, d_flags);
-    CUDA_CHECK_STREAM(stream);
+
+    if (iter < WARMUP_ITERS) {
+      CUDA_CHECK_STREAM(stream);
+      continue;
+    }
 
     build_times.push_back(cuda_timer.elapsed());
   }
@@ -62,17 +62,17 @@ RayTracingResult runGPULBVH(cudaStream_t stream, const SceneGPU& scene_gpu, Fram
   double build_mtris = nfaces * 1e-6f / stats::median(build_times);
   std::cout << "GPU LBVH build times (in seconds) - " << stats::valuesStatsLine(build_times) << std::endl;
   std::cout << "GPU LBVH build performance: " << build_mtris << " MTris/s" << std::endl;
+  report_sah_d(stream, nfaces, d_lbvh_nodes);
 
-  // ---------- Ray tracing with GPU LBVH (timed) ----------
-  fb.clear(stream);
+  fb.clear();
 
   std::vector<double> rt_times;
-  for (int iter = 0; iter < niters; ++iter) {
+  for (int iter = 0; iter < niters + WARMUP_ITERS; ++iter) {
     cuda::CudaTimer cuda_timer(stream);
     cuda::ray_tracing_render_using_bvh(
         stream,
-        dim3(divCeil(width, 16), divCeil(height, 16)),
-        dim3(16, 16),
+        width,
+        height,
         scene_gpu.vertices,
         scene_gpu.faces,
         d_lbvh_nodes,
@@ -81,7 +81,12 @@ RayTracingResult runGPULBVH(cudaStream_t stream, const SceneGPU& scene_gpu, Fram
         fb.ao,
         scene_gpu.camera,
         scene_gpu.nfaces);
-    CUDA_CHECK_STREAM(stream);
+
+    if (iter < WARMUP_ITERS) {
+      CUDA_CHECK_STREAM(stream);
+      continue;
+    }
+
     rt_times.push_back(cuda_timer.elapsed());
   }
 
@@ -90,18 +95,16 @@ RayTracingResult runGPULBVH(cudaStream_t stream, const SceneGPU& scene_gpu, Fram
   std::cout << "GPU with GPU LBVH ray tracing performance: " << mrays << " MRays/s" << std::endl;
   std::cout << "GPU with GPU LBVH total frame time: " << stats::median(build_times) + stats::median(rt_times) << " seconds" << std::endl;
 
-  // ---------- Readback ----------
   auto res = RayTracingResult();
   fb.readback(res.face_ids, res.ao);
   saveFramebuffers(results_dir, "with_gpu_lbvh", res.face_ids, res.ao);
 
-  // ---------- Free ----------
   CUDA_SAFE_CALL(cudaFreeAsync(d_morton_codes, stream));
   CUDA_SAFE_CALL(cudaFreeAsync(d_sorted_indices, stream));
   CUDA_SAFE_CALL(cudaFreeAsync(d_lbvh_nodes, stream));
   CUDA_SAFE_CALL(cudaFreeAsync(d_parent, stream));
   CUDA_SAFE_CALL(cudaFreeAsync(d_flags, stream));
-  CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+  CUDA_CHECK_STREAM(stream);
 
   return res;
 }

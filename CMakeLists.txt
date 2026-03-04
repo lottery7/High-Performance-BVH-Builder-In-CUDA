@@ -30,7 +30,6 @@ set(HEADERS
         src/debug/debug_geometry.h
         src/debug/debug_bvh.h
         src/utils/utils.h
-        src/experiments/gpu_brute_force.h
         src/utils/gpu_wrappers.h
         src/experiments/cpu_lbvh.h
         src/experiments/gpu_lbvh.h
@@ -41,7 +40,6 @@ set(SOURCES
         src/io/camera_reader.cpp
         src/io/scene_reader.cpp
         src/utils/cuda_utils.cpp
-        src/experiments/gpu_brute_force.cpp
         src/experiments/cpu_lbvh.cpp
         src/experiments/gpu_lbvh.cpp
 )
@@ -64,7 +62,6 @@ set(CUDA_SOURCES
         src/kernels/utils/camera_helpers.cu
         src/kernels/utils/geometry_helpers.cu
         src/kernels/utils/random_helpers.cu
-        src/kernels/ray_tracing/ray_tracing_render_brute_force.cu
         src/kernels/ray_tracing/ray_tracing_render_using_bvh.cu
         src/kernels/utils/fill.cu
         src/kernels/bvh_common/fill_indices.cu

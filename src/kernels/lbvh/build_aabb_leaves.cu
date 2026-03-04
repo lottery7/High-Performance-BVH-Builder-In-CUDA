@@ -1,6 +1,6 @@
 #include <cuda_runtime.h>
 
-#include "../../utils/cuda_utils.h"
+#include "../../utils/utils.h"
 #include "../defines.h"
 #include "../structs/bvh_node_gpu.h"
 

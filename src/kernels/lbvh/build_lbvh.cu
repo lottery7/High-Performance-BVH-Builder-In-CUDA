@@ -1,6 +1,6 @@
 #include <cuda_runtime.h>
 
-#include "../../utils/cuda_utils.h"
+#include "../../utils/utils.h"
 #include "../defines.h"
 #include "../structs/bvh_node_gpu.h"
 
@@ -50,7 +50,7 @@ namespace cuda
 {
   void build_lbvh(const cudaStream_t& stream, const unsigned int* morton_codes, unsigned int nfaces, BVHNodeGPU* lbvh)
   {
-    if (nfaces < 2) return;
+    rassert(nfaces > 2, 638420165);
     build_lbvh_kernel<<<compute_grid(nfaces - 1), DEFAULT_GROUP_SIZE, 0, stream>>>(morton_codes, static_cast<int>(nfaces), lbvh);
   }
 }  // namespace cuda

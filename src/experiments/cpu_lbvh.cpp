@@ -29,36 +29,52 @@ RayTracingResult runCPULBVH(
 {
   const unsigned int width = fb.width;
   const unsigned int height = fb.height;
+  const int nfaces = scene.faces.size();
 
-  std::vector<BVHNodeGPU> nodes_cpu;
-  std::vector<uint32_t> indices_cpu;
+  std::vector<BVHNodeGPU> h_nodes;
+  std::vector<uint32_t> h_indices;
 
   timer cpu_lbvh_t;
-  buildLBVH_CPU(scene.vertices, scene.faces, nodes_cpu, indices_cpu);
+  buildLBVH_CPU(scene.vertices, scene.faces, h_nodes, h_indices);
   double build_time = cpu_lbvh_t.elapsed();
 
   std::cout << "CPU LBVH build took " << build_time << " seconds" << std::endl;
-  std::cout << "CPU LBVH build performance: " << scene_gpu.nfaces * 1e-6f / build_time << " MTris/s" << std::endl;
+  std::cout << "CPU LBVH build performance: " << nfaces * 1e-6f / build_time << " MTris/s" << std::endl;
+  report_sah_h(h_nodes);
 
-  LBVHDataGPU lbvh(nodes_cpu, indices_cpu);
+  BVHNodeGPU* d_lbvh_nodes = nullptr;
+  unsigned int* d_sorted_indices = nullptr;
 
-  fb.clear(stream);
+  CUDA_SAFE_CALL(cudaMallocAsync(&d_lbvh_nodes, sizeof(BVHNodeGPU) * (2 * nfaces - 1), stream));
+  CUDA_SAFE_CALL(cudaMallocAsync(&d_sorted_indices, sizeof(unsigned int) * nfaces, stream));
+  CUDA_SAFE_CALL(cudaMemcpyAsync(d_lbvh_nodes, h_nodes.data(), h_nodes.size() * sizeof(BVHNodeGPU), cudaMemcpyHostToDevice, stream));
+  CUDA_SAFE_CALL(cudaMemcpyAsync(d_sorted_indices, h_indices.data(), h_indices.size() * sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK_STREAM(stream);
+
+  fb.clear();
 
   std::vector<double> rt_times;
-  for (int iter = 0; iter < niters; ++iter) {
+  for (int iter = 0; iter < niters + WARMUP_ITERS; ++iter) {
     cuda::CudaTimer cuda_timer(stream);
+
     cuda::ray_tracing_render_using_bvh(
         stream,
-        dim3(divCeil(width, 16), divCeil(height, 16)),
-        dim3(16, 16),
+        width,
+        height,
         scene_gpu.vertices,
         scene_gpu.faces,
-        lbvh.nodes,
-        lbvh.leaf_face_indices,
+        d_lbvh_nodes,
+        d_sorted_indices,
         fb.face_id,
         fb.ao,
         scene_gpu.camera,
         scene_gpu.nfaces);
+
+    if (iter < WARMUP_ITERS) {
+      CUDA_CHECK_STREAM(stream);
+      continue;
+    }
+
     rt_times.push_back(cuda_timer.elapsed());
   }
 
@@ -70,6 +86,10 @@ RayTracingResult runCPULBVH(
   RayTracingResult result;
   fb.readback(result.face_ids, result.ao);
   saveFramebuffers(results_dir, "with_cpu_lbvh", result.face_ids, result.ao);
+
+  CUDA_SAFE_CALL(cudaFreeAsync(d_sorted_indices, stream));
+  CUDA_SAFE_CALL(cudaFreeAsync(d_lbvh_nodes, stream));
+  CUDA_CHECK_STREAM(stream);
 
   return result;
 }
