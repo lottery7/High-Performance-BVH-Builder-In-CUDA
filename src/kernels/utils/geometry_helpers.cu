@@ -3,7 +3,7 @@
 #include <cuda_runtime.h>
 #include <float.h>
 
-#include "../structs/aabb_gpu.h"
+#include "../structs/aabb.h"
 
 namespace
 {
@@ -101,7 +101,7 @@ namespace
   static __device__ __forceinline__ bool intersect_ray_aabb(
       const float3 ray_o,
       const float3 ray_d,
-      const AABBGPU &box,
+      const AABB &box,
       float tMin,
       float tMax,
       float &tHitNear,
@@ -173,7 +173,7 @@ namespace
   static __device__ __forceinline__ bool intersect_ray_aabb_any(
       const float3 ray_o,
       const float3 ray_d,
-      const AABBGPU &box,
+      const AABB &box,
       float &tHitNear,
       float &tHitFar)
   {

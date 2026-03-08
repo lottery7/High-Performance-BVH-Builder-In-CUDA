@@ -12,7 +12,7 @@ __global__ void fill_indices_kernel(unsigned int* indices, unsigned int n)
 
 namespace cuda
 {
-  void fill_indices(const cudaStream_t& stream, unsigned int* indices, unsigned int n)
+  void fill_indices(cudaStream_t stream, unsigned int* indices, unsigned int n)
   {
     fill_indices_kernel<<<compute_grid(n), DEFAULT_GROUP_SIZE, 0, stream>>>(indices, n);
   }

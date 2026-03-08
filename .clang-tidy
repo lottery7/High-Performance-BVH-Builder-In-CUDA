@@ -1,0 +1,30 @@
+Checks: >
+  -*,
+  readability-identifier-naming
+CheckOptions:
+  # Types
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  # опционально (если нужно так же)
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.UnionCase
+    value: CamelCase
+
+  # Functions / methods
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.MethodCase
+    value: lower_case
+
+  # Variables / members
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+
+  # Private members suffix (my_value_)
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: _

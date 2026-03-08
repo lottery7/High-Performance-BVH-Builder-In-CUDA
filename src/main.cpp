@@ -2,19 +2,22 @@
 #include <libbase/timer.h>
 
 #include <filesystem>
+#include <iostream>
+#include <optional>
 
 #include "experiments/common.h"
-#include "experiments/cpu_lbvh.h"
-#include "experiments/gpu_lbvh.h"
+#include "experiments/kitten_lbvh.h"
+#include "experiments/my_cpu_lbvh.h"
+#include "experiments/my_gpu_lbvh.h"
 #include "io/camera_reader.h"
 #include "io/scene_reader.h"
 #include "kernels/defines.h"
 #include "kernels/kernels.h"
 #include "utils/cuda_utils.h"
-#include "utils/gpu_wrappers.h"
+#include "utils/device_wrappers.h"
 #include "utils/utils.h"
 
-static void processScene(cudaStream_t stream, const std::string& scene_path, int niters)
+static void process_scene(cudaStream_t stream, const std::string& scene_path, int n_iters)
 {
   std::cout << "____________________________________________________________________________________________" << std::endl;
 
@@ -26,7 +29,7 @@ static void processScene(cudaStream_t stream, const std::string& scene_path, int
     return;
   }
 
-  SceneGeometry scene = loadScene(scene_path);
+  SceneGeometry scene = load_scene(scene_path);
   rassert(!scene.vertices.empty(), 546345423523143);
   rassert(!scene.faces.empty(), 54362452342);
 
@@ -38,47 +41,68 @@ static void processScene(cudaStream_t stream, const std::string& scene_path, int
   std::filesystem::create_directory(results_dir);
 
   std::cout << "Loading camera " << camera_path << "..." << std::endl;
-  CameraViewGPU camera = loadViewState(camera_path);
+  CameraView camera = load_view_state(camera_path);
 
-  double loading_data_time = loading_t.elapsed();
+  const double loading_data_time = loading_t.elapsed();
 
   const unsigned int width = camera.K.width;
   const unsigned int height = camera.K.height;
 
-  SceneGPU scene_gpu(stream, scene, camera);
-  FramebuffersGPU fb(stream, width, height);
+  SceneDevice scene_gpu(stream, scene, camera);
+  FramebuffersDevice fb(stream, width, height);
 
   std::cout << "Scene " << scene_name << " loaded to GPU: " << scene.vertices.size() << " vertices, " << scene.faces.size() << " faces in "
             << loading_data_time << " sec" << std::endl;
   std::cout << "Camera framebuffer size: " << width << "x" << height << std::endl;
+  std::cout << "Running experiments" << std::endl << std::endl;
+
+  std::optional<RayTracingResult> ground_truth;
 
   // CPU LBVH
-  auto ground_truth = runCPULBVH(stream, scene, scene_gpu, fb, results_dir, niters);
-
-  // GPU LBVH
   {
-    auto res = runGPULBVH(stream, scene_gpu, fb, results_dir, niters);
-    validateAgainstGroundTruth(ground_truth, res, width, height);
+    auto res = run_cpu_lbvh(stream, scene, scene_gpu, fb, results_dir, n_iters);
+    if (ground_truth)
+      validate_against_ground_truth(*ground_truth, res, width, height);
+    else
+      ground_truth = res;
   }
+
+  // My implementation of LBVH
+  {
+    auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir, n_iters);
+    if (ground_truth)
+      validate_against_ground_truth(*ground_truth, res, width, height);
+    else
+      ground_truth = res;
+  }
+
+  // Kitten LBVH (works VERY VERY BAD on large scenes)
+  // {
+  //   auto res = run_kitten_lbvh(scene_gpu, fb, results_dir, n_iters);
+  //   if (ground_truth)
+  //     validate_against_ground_truth(*ground_truth, res, width, height);
+  //   else
+  //     ground_truth = res;
+  // }
 }
 
 static void run(int argc, char** argv)
 {
-  cuda::selectCudaDevice(argc, argv);
+  cuda::select_cuda_device(argc, argv);
   cudaStream_t stream;
   CUDA_SAFE_CALL(cudaStreamCreate(&stream));
 
   std::vector<std::string> scenes = {
       "data/gnome/gnome.ply",
-      "data/powerplant/powerplant.obj",
-      "data/san-miguel/san-miguel.obj",
+      // "data/powerplant/powerplant.obj",
+      // "data/san-miguel/san-miguel.obj",
   };
 
-  const int niters = 10;
+  constexpr int n_iters = 10;
 
   std::cout << "Using " << AO_SAMPLES << " ray samples for ambient occlusion" << std::endl;
 
-  for (const std::string& scene_path : scenes) processScene(stream, scene_path, niters);
+  for (const std::string& scene_path : scenes) process_scene(stream, scene_path, n_iters);
 
   CUDA_SAFE_CALL(cudaStreamDestroy(stream));
 }

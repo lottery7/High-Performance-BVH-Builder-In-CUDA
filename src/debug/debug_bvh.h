@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "../io/scene_reader.h"
-#include "../kernels/structs/bvh_node_gpu.h"
+#include "../kernels/structs/bvh_node.h"
 
 namespace debug
 {
@@ -32,7 +32,7 @@ namespace debug
     }
 
     // BFS from root (index 0) to compute depths of all reachable nodes
-    inline std::vector<std::uint32_t> compute_depths(const std::vector<BVHNodeGPU>& nodes)
+    inline std::vector<std::uint32_t> compute_depths(const std::vector<BVHNode>& nodes)
     {
       const std::size_t n = nodes.size();
       std::vector<std::uint32_t> depth(n, std::numeric_limits<std::uint32_t>::max());
@@ -48,12 +48,12 @@ namespace debug
       std::size_t head = 0;
       while (head < queue.size()) {
         std::uint32_t idx = queue[head++];
-        const BVHNodeGPU& node = nodes[idx];
+        const BVHNode& node = nodes[idx];
 
         std::uint32_t d_next = depth[idx] + 1;
 
-        std::uint32_t lc = node.leftChildIndex;
-        std::uint32_t rc = node.rightChildIndex;
+        std::uint32_t lc = node.left_child_index;
+        std::uint32_t rc = node.right_child_index;
 
         if (lc < n && depth[lc] == std::numeric_limits<std::uint32_t>::max()) {
           depth[lc] = d_next;
@@ -69,7 +69,7 @@ namespace debug
     }
 
     // Write 8 vertices of a box for given AABB
-    inline void write_box_vertices(std::ofstream& out, const AABBGPU& aabb)
+    inline void write_box_vertices(std::ofstream& out, const AABB& aabb)
     {
       const float min_x = aabb.min_x;
       const float min_y = aabb.min_y;
@@ -170,7 +170,11 @@ namespace debug
 
   // Dump BVH nodes as boxes (triangulated cubes) for nodes with depth in [min_depth, max_depth].
   // Depth is computed from node 0 as root.
-  inline void dump_bvh_boxes_ply(const std::string& filename, const std::vector<BVHNodeGPU>& nodes, std::uint32_t min_depth, std::uint32_t max_depth)
+  inline void dump_bvh_boxes_ply(
+      const std::string& filename,
+      const std::vector<BVHNode>& nodes,
+      std::uint32_t min_depth,
+      std::uint32_t max_depth)
   {
     if (nodes.empty()) return;
 
@@ -213,7 +217,7 @@ namespace debug
       if (d == std::numeric_limits<std::uint32_t>::max()) continue;
       if (d < min_depth || d > max_depth) continue;
 
-      const BVHNodeGPU& node = nodes[i];
+      const BVHNode& node = nodes[i];
       bvh_detail::write_box_vertices(out, node.aabb);
     }
 
@@ -230,7 +234,7 @@ namespace debug
   }
 
   // Convenience wrapper: dump all reachable BVH nodes as boxes
-  inline void dump_bvh_all_boxes_ply(const std::string& filename, const std::vector<BVHNodeGPU>& nodes)
+  inline void dump_bvh_all_boxes_ply(const std::string& filename, const std::vector<BVHNode>& nodes)
   {
     dump_bvh_boxes_ply(filename, nodes, 0u, std::numeric_limits<std::uint32_t>::max());
   }
@@ -238,7 +242,7 @@ namespace debug
   // Dump BVH node centers as points (no faces) for nodes with depth in [min_depth, max_depth]
   inline void dump_bvh_centers_ply(
       const std::string& filename,
-      const std::vector<BVHNodeGPU>& nodes,
+      const std::vector<BVHNode>& nodes,
       std::uint32_t min_depth,
       std::uint32_t max_depth)
   {
@@ -271,7 +275,7 @@ namespace debug
       if (d == std::numeric_limits<std::uint32_t>::max()) continue;
       if (d < min_depth || d > max_depth) continue;
 
-      const AABBGPU& aabb = nodes[i].aabb;
+      const AABB& aabb = nodes[i].aabb;
       const float cx = 0.5f * (aabb.min_x + aabb.max_x);
       const float cy = 0.5f * (aabb.min_y + aabb.max_y);
       const float cz = 0.5f * (aabb.min_z + aabb.max_z);

@@ -3,26 +3,20 @@ cmake_minimum_required(VERSION 3.20)
 project(HighPerformanceBVHBuilderInCUDA LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# OpenMP позволит распараллеливать циклы на все ядра процессора простыми директивами
-find_package(OpenMP)
-if (OpenMP_CXX_FOUND)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
-else ()
-    # Это не ошибка т.к. если нет OpenMP - код будет работать, просто директивы распараллеливания ничего не будут делать
-    message(WARNING "OpenMP not found!")
-endif ()
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 add_subdirectory(libs)
 
+# ---- Sources / Headers ----
 set(HEADERS
         src/kernels/kernels.h
-        src/kernels/structs/aabb_gpu.h
-        src/kernels/structs/bvh_node_gpu.h
-        src/kernels/structs/camera_gpu.h
-        src/kernels/structs/morton_code_gpu.h
+        src/kernels/structs/aabb.h
+        src/kernels/structs/bvh_node.h
+        src/kernels/structs/camera.h
+        src/kernels/structs/morton_code.h
         src/io/camera_reader.h
         src/io/scene_reader.h
         src/utils/cuda_utils.h
@@ -30,34 +24,22 @@ set(HEADERS
         src/debug/debug_geometry.h
         src/debug/debug_bvh.h
         src/utils/utils.h
-        src/utils/gpu_wrappers.h
-        src/experiments/cpu_lbvh.h
-        src/experiments/gpu_lbvh.h
+        src/utils/device_wrappers.h
+        src/experiments/my_cpu_lbvh.h
+        src/experiments/my_gpu_lbvh.h
         src/experiments/common.h
+        src/experiments/kitten_lbvh.h
 )
 
 set(SOURCES
         src/io/camera_reader.cpp
         src/io/scene_reader.cpp
         src/utils/cuda_utils.cpp
-        src/experiments/cpu_lbvh.cpp
-        src/experiments/gpu_lbvh.cpp
+        src/experiments/my_cpu_lbvh.cpp
+        src/experiments/my_gpu_lbvh.cpp
+        src/experiments/kitten_lbvh.cpp
 )
 
-set(LIBRARIES
-        libclew
-        libimages
-        libjson
-        libbase
-)
-
-enable_language(CUDA)
-find_package(CUDAToolkit REQUIRED)
-find_package(Thrust REQUIRED CONFIG)
-
-# Компиляция CUDA происходит NVCC компилятором, все файлы с расширением .cu компилируются два раза:
-# 1) один раз обычным компилятором - для HOST-side кода, компилируются только те функции которые не помечены специально что они для видеокарты (или помечены что они и для видеокарты и для HOST-side кода)
-# 2) второй раз специальным CUDA-компилятором NVCC - для DEVICE-side кода, например функции помеченные специальным модификатором __global__ (кернелы) или __device__ (функции которые можно вызвать на видеокарте, т.е. из кернелов)
 set(CUDA_SOURCES
         src/kernels/utils/camera_helpers.cu
         src/kernels/utils/geometry_helpers.cu
@@ -70,17 +52,64 @@ set(CUDA_SOURCES
         src/kernels/lbvh/build_aabb.cu
         src/kernels/lbvh/build_aabb_leaves.cu
         src/kernels/utils/sort_by_key.cu
+        src/kernels/kitten_utils/compute_faces_aabb.cu
+        src/kernels/kitten_utils/convert_to_bvh_nodes.cu
+        src/kernels/toru_ninja_utils/build_bvh.cu
+        #        src/kernels/toru_ninja_utils/convert_to_bvh_nodes.cu
 )
-add_compile_definitions(
-        CMAKE_CUDA_ARCHITECTURES=75
-        CMAKE_CUDA_FLAGS=-lineinfo
+
+set(LIBRARIES
+        libclew
+        libimages
+        libjson
+        libbase
+        glm::glm
+        KittenGpuLBVH
+        KittenEngine
+        ToruNinjaLBVH
+)
+
+# ---- Packages ----
+find_package(CUDAToolkit REQUIRED)
+find_package(OpenMP) # optional
+# find_package(Thrust REQUIRED CONFIG)
+find_package(glm CONFIG REQUIRED)
+
+# ---- Core library ----
+add_library(${PROJECT_NAME}_core STATIC
+        ${SOURCES}
+        ${CUDA_SOURCES}
+        ${HEADERS}   # опционально, чисто для IDE
+)
+
+# Архитектура GPU (compute capability). Можно списком: 75;86;89 и т.д.
+set_property(TARGET ${PROJECT_NAME}_core PROPERTY CUDA_ARCHITECTURES 75)
+
+# CUDA-only опции компилятора
+target_compile_options(${PROJECT_NAME}_core PRIVATE
+        $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo --extended-lambda>
+)
+
+target_compile_definitions(${PROJECT_NAME}_core PRIVATE
         THRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CUDA
 )
 
-add_library(${PROJECT_NAME}_core STATIC ${SOURCES} ${CUDA_SOURCES} ${HEADERS})
-target_link_libraries(${PROJECT_NAME}_core ${LIBRARIES})
-target_include_directories(${PROJECT_NAME}_core PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME}_core
+        PUBLIC
+        ${LIBRARIES}
+        CUDA::cudart
+)
 
+if (OpenMP_CXX_FOUND)
+    target_link_libraries(${PROJECT_NAME}_core PUBLIC OpenMP::OpenMP_CXX)
+else ()
+    message(WARNING "OpenMP not found!")
+endif ()
+
+# Если нужно, чтобы #include "..." искались от корня src:
+# target_include_directories(${PROJECT_NAME}_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# target_include_directories(${PROJECT_NAME}_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# ---- Executable ----
 add_executable(run_experiments src/main.cpp)
-target_link_libraries(run_experiments ${PROJECT_NAME}_core)
-target_include_directories(run_experiments PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+target_link_libraries(run_experiments PRIVATE ${PROJECT_NAME}_core)

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "../kernels/structs/morton_code_gpu.h"
+#include "../kernels/structs/morton_code.h"
 
 // Helper: expand 10 bits into 30 bits by inserting 2 zeros between each bit
-inline unsigned int expandBits(unsigned int v)
+inline unsigned int expand_bits(unsigned int v)
 {
   // Ensure we have only lowest 10 bits
   rassert(v == (v & 0x3FFu), 76389413321, v);
@@ -26,9 +26,9 @@ inline MortonCode morton3D(float x, float y, float z)
   unsigned int iy = std::min(std::max((int)(y * 1024.0f), 0), 1023);
   unsigned int iz = std::min(std::max((int)(z * 1024.0f), 0), 1023);
 
-  unsigned int xx = expandBits(ix);
-  unsigned int yy = expandBits(iy);
-  unsigned int zz = expandBits(iz);
+  unsigned int xx = expand_bits(ix);
+  unsigned int yy = expand_bits(iy);
+  unsigned int zz = expand_bits(iz);
 
   // Interleave: x in bits [2,5,8,...], y in [1,4,7,...], z in [0,3,6,...]
   return (xx << 2) | (yy << 1) | zz;

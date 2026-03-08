@@ -11,7 +11,7 @@
 
 // -------------------- tiny XML helpers --------------------
 
-static std::string findTagOpenToGT(const std::string& xml, const std::string& tagName)
+static std::string find_tag_open_to_gt(const std::string& xml, const std::string& tagName)
 {
   const std::string open = "<" + tagName;
   size_t p = xml.find(open);
@@ -21,7 +21,7 @@ static std::string findTagOpenToGT(const std::string& xml, const std::string& ta
   return xml.substr(p, q - p + 1);
 }
 
-static std::string getAttr(const std::string& tag, const std::string& name)
+static std::string get_attr(const std::string& tag, const std::string& name)
 {
   const std::string key = name + "=\"";
   size_t p = tag.find(key);
@@ -33,7 +33,7 @@ static std::string getAttr(const std::string& tag, const std::string& name)
 }
 
 template <class T>
-static std::vector<T> parseList(const std::string& s)
+static std::vector<T> parse_list(const std::string& s)
 {
   std::istringstream ss(s);
   std::vector<T> out;
@@ -64,20 +64,20 @@ static inline void compute_t_from_R_C(const float R[9], const float C[3], float 
 
 // -------------------- core --------------------
 
-CameraViewGPU parseViewStateFromString(const std::string& xml)
+CameraView parse_view_state_from_string(const std::string& xml)
 {
-  const std::string camTag = findTagOpenToGT(xml, "VCGCamera");
-  const std::string viewTag = findTagOpenToGT(xml, "ViewSettings");
+  const std::string cam_tag = find_tag_open_to_gt(xml, "VCGCamera");
+  const std::string view_tag = find_tag_open_to_gt(xml, "ViewSettings");
 
-  CameraViewGPU out = {};
-  out.magic_bits_guard = CAMERA_VIEW_GPU_MAGIC_BITS_GUARD;
+  CameraView out = {};
+  out.magic_bits_guard = CAMERA_VIEW_MAGIC_BITS_GUARD;
 
   // ---- Intrinsics ----
   {
-    const float focal_mm = std::stof(getAttr(camTag, "FocalMm"));
-    const auto pix_mm = parseList<float>(getAttr(camTag, "PixelSizeMm"));      // sx sy  [mm/px]
-    const auto center = parseList<float>(getAttr(camTag, "CenterPx"));         // cx cy  [px]
-    const auto viewport = parseList<uint32_t>(getAttr(camTag, "ViewportPx"));  // w h    [px]
+    const float focal_mm = std::stof(get_attr(cam_tag, "FocalMm"));
+    const auto pix_mm = parse_list<float>(get_attr(cam_tag, "PixelSizeMm"));      // sx sy  [mm/px]
+    const auto center = parse_list<float>(get_attr(cam_tag, "CenterPx"));         // cx cy  [px]
+    const auto viewport = parse_list<uint32_t>(get_attr(cam_tag, "ViewportPx"));  // w h    [px]
 
     rassert(pix_mm.size() == 2, 5401);
     rassert(center.size() == 2, 5402);
@@ -98,7 +98,7 @@ CameraViewGPU parseViewStateFromString(const std::string& xml)
 
   // --- Extrinsics ---
   // parse R_wc (row-major), could be 3x3 (9) or 4x4 (16: take upper-left 3x3)
-  const auto Rlist = parseList<float>(getAttr(camTag, "RotationMatrix"));
+  const auto Rlist = parse_list<float>(get_attr(cam_tag, "RotationMatrix"));
   rassert(Rlist.size() == 9 || Rlist.size() == 16, 5501);
   float R_wc[9];
   if (Rlist.size() == 16) {
@@ -139,7 +139,7 @@ CameraViewGPU parseViewStateFromString(const std::string& xml)
 
 #if 1
   // C = TranslationVector (camera center in world coords)
-  const auto Tlist = parseList<float>(getAttr(camTag, "TranslationVector"));
+  const auto Tlist = parse_list<float>(get_attr(cam_tag, "TranslationVector"));
   rassert(Tlist.size() >= 3, 5502);
   out.E.C[0] = -Tlist[0];
   out.E.C[1] = -Tlist[1];
@@ -171,23 +171,23 @@ CameraViewGPU parseViewStateFromString(const std::string& xml)
 
   // ---- View settings ----
   {
-    out.view.near_plane = std::stof(getAttr(viewTag, "NearPlane"));
-    out.view.far_plane = std::stof(getAttr(viewTag, "FarPlane"));
-    out.view.track_scale = std::stof(getAttr(viewTag, "TrackScale"));
+    out.view.near_plane = std::stof(get_attr(view_tag, "NearPlane"));
+    out.view.far_plane = std::stof(get_attr(view_tag, "FarPlane"));
+    out.view.track_scale = std::stof(get_attr(view_tag, "TrackScale"));
   }
 
   return out;
 }
 
-CameraViewGPU loadViewState(const std::string& path)
+CameraView load_view_state(const std::string& path)
 {
   std::ifstream in(path, std::ios::binary);
   rassert(in.good(), 5000, path);
   std::string xml((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-  return parseViewStateFromString(xml);
+  return parse_view_state_from_string(xml);
 }
 
-std::string dumpViewStateToString(const CameraViewGPU& camera)
+std::string dump_view_state_to_string(const CameraView& camera)
 {
   // Reconstruct R_wc (row-major) from stored R_cw = camera.E.R
   float Rwc[9];

@@ -12,14 +12,12 @@
 #include "libbase/runtime_assert.h"
 #include "libbase/string_utils.h"
 
-// ----------------- Helpers (OBJ) -----------------
-
 // Fast ASCII-only whitespace check (faster than std::isspace with locale)
-static inline bool isSpaceChar(char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v'; }
+static inline bool is_space_char(char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v'; }
 
 // Fast decimal float parser: [sign] digits [ '.' digits ]
 // Does NOT handle exponent; caller must ensure there is no 'e'/'E' in [s,end).
-static inline float fastAtofSimple(const char* s, const char* end)
+static inline float fast_atof_simple(const char* s, const char* end)
 {
   bool neg = false;
   if (s < end && (*s == '+' || *s == '-')) {
@@ -27,34 +25,34 @@ static inline float fastAtofSimple(const char* s, const char* end)
     ++s;
   }
 
-  double intPart = 0.0;
+  double int_part = 0.0;
   while (s < end && *s >= '0' && *s <= '9') {
-    intPart = intPart * 10.0 + double(*s - '0');
+    int_part = int_part * 10.0 + double(*s - '0');
     ++s;
   }
 
-  double fracPart = 0.0;
+  double frac_part = 0.0;
   if (s < end && *s == '.') {
     ++s;
     double base = 0.1;
     while (s < end && *s >= '0' && *s <= '9') {
-      fracPart += double(*s - '0') * base;
+      frac_part += double(*s - '0') * base;
       base *= 0.1;
       ++s;
     }
   }
 
-  double res = intPart + fracPart;
+  double res = int_part + frac_part;
   return neg ? float(-res) : float(res);
 }
 
 // Parse leading integer index from token sequence like "12/3/4" or "-2//5"
 // Works on a char* pointer and advances it to the end of token.
 // Returns 0 only when there are no more tokens on the line.
-static inline long parseObjIndexToken(const char*& p)
+static inline long parse_obj_index_token(const char*& p)
 {
   // skip leading spaces
-  while (*p && isSpaceChar(*p)) ++p;
+  while (*p && is_space_char(*p)) ++p;
 
   // no more tokens on this line
   if (!*p) return 0;
@@ -78,16 +76,16 @@ static inline long parseObjIndexToken(const char*& p)
   rassert(p != digitStart, 1004, "invalid OBJ index token");
 
   // skip the rest of token (/, vt/vn, etc.) until whitespace
-  while (*p && !isSpaceChar(*p)) ++p;
+  while (*p && !is_space_char(*p)) ++p;
 
   return neg ? -v : v;
 }
 
 // Parse float from char* and advance pointer
-static inline float parseFloat(const char*& p)
+static inline float parse_float(const char*& p)
 {
   // skip spaces
-  while (*p && isSpaceChar(*p)) ++p;
+  while (*p && is_space_char(*p)) ++p;
 
   rassert(*p, 1202);  // no data
 
@@ -96,7 +94,7 @@ static inline float parseFloat(const char*& p)
   bool needSlow = false;
 
   // find token end and detect exponent / special values
-  while (*q && !isSpaceChar(*q)) {
+  while (*q && !is_space_char(*q)) {
     char c = *q;
     // exponent or nan/inf -> use slow path
     if (c == 'e' || c == 'E' || c == 'n' || c == 'N' || c == 'i' || c == 'I') {
@@ -109,7 +107,7 @@ static inline float parseFloat(const char*& p)
 
   if (!needSlow) {
     // fast simple decimal
-    v = fastAtofSimple(start, q);
+    v = fast_atof_simple(start, q);
   } else {
     // fallback to libc parser
     char* end = nullptr;
@@ -123,7 +121,7 @@ static inline float parseFloat(const char*& p)
 }
 
 // Convert OBJ index (1-based or negative) to 0-based
-static inline uint32_t resolveObjIndex(long idx, size_t vcount)
+static inline uint32_t resolve_obj_index(long idx, size_t vcount)
 {
   if (idx > 0) {
     rassert(static_cast<size_t>(idx) <= vcount, 1001);
@@ -139,7 +137,7 @@ static inline uint32_t resolveObjIndex(long idx, size_t vcount)
 
 // Fan triangulation: (v0, vi, vi+1)
 template <class Idx>
-static inline void triangulateFan(const std::vector<Idx>& poly, std::vector<point3u>& out)
+static inline void triangulate_fan(const std::vector<Idx>& poly, std::vector<point3u>& out)
 {
   if (poly.size() < 3) return;
   for (size_t i = 1; i + 1 < poly.size(); ++i) {
@@ -149,7 +147,7 @@ static inline void triangulateFan(const std::vector<Idx>& poly, std::vector<poin
 
 // ----------------- OBJ loader -----------------
 
-SceneGeometry loadOBJ(const std::string& path)
+SceneGeometry load_obj(const std::string& path)
 {
   std::ifstream in(path, std::ios::binary);
   rassert(in.good(), 1100, path);
@@ -173,29 +171,29 @@ SceneGeometry loadOBJ(const std::string& path)
     if (line[0] == '#') continue;
 
     // vertex: "v x y z"
-    if (line.size() > 2 && line[0] == 'v' && isSpaceChar(line[1])) {
+    if (line.size() > 2 && line[0] == 'v' && is_space_char(line[1])) {
       const char* p = line.c_str() + 2;
-      float x = parseFloat(p);
-      float y = parseFloat(p);
-      float z = parseFloat(p);
+      float x = parse_float(p);
+      float y = parse_float(p);
+      float z = parse_float(p);
       scene.vertices.emplace_back(point3f{x, y, z});
       continue;
     }
 
     // face: "f a b c ..." with tokens a[/b[/c]]
-    if (line.size() > 2 && line[0] == 'f' && isSpaceChar(line[1])) {
+    if (line.size() > 2 && line[0] == 'f' && is_space_char(line[1])) {
       const char* p = line.c_str() + 2;
       poly.clear();
 
       while (*p) {
-        long raw = parseObjIndexToken(p);
+        long raw = parse_obj_index_token(p);
         if (raw == 0) break;  // no more indices
-        uint32_t idx = resolveObjIndex(raw, scene.vertices.size());
+        uint32_t idx = resolve_obj_index(raw, scene.vertices.size());
         poly.push_back(idx);
       }
 
       rassert(poly.size() >= 3, 1301, path);
-      triangulateFan(poly, scene.faces);
+      triangulate_fan(poly, scene.faces);
       continue;
     }
 
@@ -213,7 +211,7 @@ namespace ply_detail
 {
 
   // Map PLY scalar type to byte size
-  static inline size_t typeSize(const std::string& t)
+  static inline size_t type_size(const std::string& t)
   {
     if (t == "char" || t == "int8") return 1;
     if (t == "uchar" || t == "uint8") return 1;
@@ -229,7 +227,7 @@ namespace ply_detail
 
   // Read little-endian value of type T and fix endianness on big-endian hosts
   template <class T>
-  static inline T readLE(std::istream& is)
+  static inline T read_le(std::istream& is)
   {
     T v{};
     is.read(reinterpret_cast<char*>(&v), sizeof(T));
@@ -240,49 +238,47 @@ namespace ply_detail
     return v;
   }
 
-  static inline uint64_t readScalarAsU64(std::istream& is, const std::string& t)
+  static inline uint64_t read_scalar_as_u64(std::istream& is, const std::string& t)
   {
-    if (t == "uchar" || t == "uint8") return readLE<uint8_t>(is);
-    if (t == "char" || t == "int8") return static_cast<uint64_t>(readLE<int8_t>(is));
-    if (t == "ushort" || t == "uint16") return readLE<uint16_t>(is);
-    if (t == "short" || t == "int16") return static_cast<uint64_t>(readLE<int16_t>(is));
-    if (t == "uint" || t == "uint32") return readLE<uint32_t>(is);
-    if (t == "int" || t == "int32") return static_cast<uint64_t>(readLE<int32_t>(is));
+    if (t == "uchar" || t == "uint8") return read_le<uint8_t>(is);
+    if (t == "char" || t == "int8") return static_cast<uint64_t>(read_le<int8_t>(is));
+    if (t == "ushort" || t == "uint16") return read_le<uint16_t>(is);
+    if (t == "short" || t == "int16") return static_cast<uint64_t>(read_le<int16_t>(is));
+    if (t == "uint" || t == "uint32") return read_le<uint32_t>(is);
+    if (t == "int" || t == "int32") return static_cast<uint64_t>(read_le<int32_t>(is));
     rassert(false, 2301, t);
     return 0;
   }
 
-  static inline uint32_t readIndexAsU32(std::istream& is, const std::string& t)
+  static inline uint32_t read_index_as_u32(std::istream& is, const std::string& t)
   {
-    if (t == "uchar" || t == "uint8") return readLE<uint8_t>(is);
-    if (t == "char" || t == "int8") return static_cast<uint32_t>(readLE<int8_t>(is));
-    if (t == "ushort" || t == "uint16") return readLE<uint16_t>(is);
-    if (t == "short" || t == "int16") return static_cast<uint32_t>(readLE<int16_t>(is));
-    if (t == "uint" || t == "uint32") return readLE<uint32_t>(is);
-    if (t == "int" || t == "int32") return static_cast<uint32_t>(readLE<int32_t>(is));
+    if (t == "uchar" || t == "uint8") return read_le<uint8_t>(is);
+    if (t == "char" || t == "int8") return static_cast<uint32_t>(read_le<int8_t>(is));
+    if (t == "ushort" || t == "uint16") return read_le<uint16_t>(is);
+    if (t == "short" || t == "int16") return static_cast<uint32_t>(read_le<int16_t>(is));
+    if (t == "uint" || t == "uint32") return read_le<uint32_t>(is);
+    if (t == "int" || t == "int32") return static_cast<uint32_t>(read_le<int32_t>(is));
     rassert(false, 2302, t);
     return 0;
   }
 
-  static inline double readNumberAsDouble(std::istream& is, const std::string& t)
+  static inline double read_number_as_double(std::istream& is, const std::string& t)
   {
-    if (t == "float" || t == "float32") return static_cast<double>(readLE<float>(is));
-    if (t == "double" || t == "float64") return readLE<double>(is);
-    if (t == "char" || t == "int8") return static_cast<double>(readLE<int8_t>(is));
-    if (t == "uchar" || t == "uint8") return static_cast<double>(readLE<uint8_t>(is));
-    if (t == "short" || t == "int16") return static_cast<double>(readLE<int16_t>(is));
-    if (t == "ushort" || t == "uint16") return static_cast<double>(readLE<uint16_t>(is));
-    if (t == "int" || t == "int32") return static_cast<double>(readLE<int32_t>(is));
-    if (t == "uint" || t == "uint32") return static_cast<double>(readLE<uint32_t>(is));
+    if (t == "float" || t == "float32") return static_cast<double>(read_le<float>(is));
+    if (t == "double" || t == "float64") return read_le<double>(is);
+    if (t == "char" || t == "int8") return static_cast<double>(read_le<int8_t>(is));
+    if (t == "uchar" || t == "uint8") return static_cast<double>(read_le<uint8_t>(is));
+    if (t == "short" || t == "int16") return static_cast<double>(read_le<int16_t>(is));
+    if (t == "ushort" || t == "uint16") return static_cast<double>(read_le<uint16_t>(is));
+    if (t == "int" || t == "int32") return static_cast<double>(read_le<int32_t>(is));
+    if (t == "uint" || t == "uint32") return static_cast<double>(read_le<uint32_t>(is));
     rassert(false, 2303, t);
     return 0.0;
   }
 
 }  // namespace ply_detail
 
-// ----------------- PLY loader -----------------
-
-SceneGeometry loadPLY(const std::string& path)
+SceneGeometry load_ply(const std::string& path)
 {
   using namespace ply_detail;
 
@@ -457,7 +453,7 @@ SceneGeometry loadPLY(const std::string& path)
         }
       }
       rassert(polygon.size() >= 3, 3207);
-      triangulateFan(polygon, scene.faces);
+      triangulate_fan(polygon, scene.faces);
     }
   } else {
     // Binary little-endian
@@ -467,7 +463,7 @@ SceneGeometry loadPLY(const std::string& path)
       std::vector<double> vals;
       vals.reserve(vprops.size());
       for (size_t p = 0; p < vprops.size(); ++p) {
-        vals.push_back(readNumberAsDouble(in, vprops[p].type));
+        vals.push_back(read_number_as_double(in, vprops[p].type));
       }
       rassert(in.good(), 3300);
       scene.vertices[static_cast<size_t>(i)] = point3f{float(vals[size_t(xPos)]), float(vals[size_t(yPos)]), float(vals[size_t(zPos)])};
@@ -485,20 +481,20 @@ SceneGeometry loadPLY(const std::string& path)
       for (size_t p = 0; p < fprops.size(); ++p) {
         const auto& fp = fprops[p];
         if (fp.isList) {
-          uint64_t k = readScalarAsU64(in, fp.countType);
+          uint64_t k = read_scalar_as_u64(in, fp.countType);
           rassert(k >= 3 && k < (1ull << 20), 3303);
           std::vector<uint32_t> tmp;
           tmp.reserve(static_cast<size_t>(k));
-          for (uint64_t j = 0; j < k; ++j) tmp.push_back(readIndexAsU32(in, fp.itemType));
+          for (uint64_t j = 0; j < k; ++j) tmp.push_back(read_index_as_u32(in, fp.itemType));
           if ((int)p == faceListIdx) polygon = std::move(tmp);
         } else {
           // discard scalar face property
-          (void)readNumberAsDouble(in, fp.type);
+          (void)read_number_as_double(in, fp.type);
         }
       }
 
       rassert(!polygon.empty(), 3304);
-      triangulateFan(polygon, scene.faces);
+      triangulate_fan(polygon, scene.faces);
     }
   }
 
@@ -509,23 +505,22 @@ SceneGeometry loadPLY(const std::string& path)
 
 // ----------------- Dispatcher -----------------
 
-SceneGeometry loadScene(const std::string& path)
+SceneGeometry load_scene(const std::string& path)
 {
   std::optional<SceneGeometry> scene;
   if (ends_with(path, ".ply")) {
-    scene = loadPLY(path);
+    scene = load_ply(path);
   } else if (ends_with(path, ".obj")) {
-    scene = loadOBJ(path);
+    scene = load_obj(path);
   } else {
     rassert(false, 324134123142132, path);
   }
 
-  point3f cMin, cMax;
   for (size_t i = 0; i < scene->faces.size(); ++i) {
-    point3u face = scene->faces[i];
-    point3f v0 = scene->vertices[face.x];
-    point3f v1 = scene->vertices[face.y];
-    point3f v2 = scene->vertices[face.z];
+    const point3u face = scene->faces[i];
+    const point3f v0 = scene->vertices[face.x];
+    const point3f v1 = scene->vertices[face.y];
+    const point3f v2 = scene->vertices[face.z];
 
     point3f centroid;
     centroid.x = (v0.x + v1.x + v2.x) * (1.0f / 3.0f);
@@ -533,21 +528,20 @@ SceneGeometry loadScene(const std::string& path)
     centroid.z = (v0.z + v1.z + v2.z) * (1.0f / 3.0f);
 
     if (i == 0) {
-      cMin = centroid;
-      cMax = centroid;
+      scene->aabb.min_x = scene->aabb.max_x = centroid.x;
+      scene->aabb.min_y = scene->aabb.max_y = centroid.y;
+      scene->aabb.min_z = scene->aabb.max_z = centroid.z;
     } else {
-      cMin.x = std::min(cMin.x, centroid.x);
-      cMin.y = std::min(cMin.y, centroid.y);
-      cMin.z = std::min(cMin.z, centroid.z);
-      cMax.x = std::max(cMax.x, centroid.x);
-      cMax.y = std::max(cMax.y, centroid.y);
-      cMax.z = std::max(cMax.z, centroid.z);
+      scene->aabb.min_x = std::min(scene->aabb.min_x, centroid.x);
+      scene->aabb.min_y = std::min(scene->aabb.min_y, centroid.y);
+      scene->aabb.min_z = std::min(scene->aabb.min_z, centroid.z);
+      scene->aabb.max_x = std::max(scene->aabb.max_x, centroid.x);
+      scene->aabb.max_y = std::max(scene->aabb.max_y, centroid.y);
+      scene->aabb.max_z = std::max(scene->aabb.max_z, centroid.z);
     }
   }
-  std::cout << "cMin: (" << cMin.x << ", " << cMin.y << ", " << cMin.z << ")\n";
-  std::cout << "cMax: (" << cMax.x << ", " << cMax.y << ", " << cMax.z << ")\n";
-  scene->cMin = cMin;
-  scene->cMax = cMax;
+  std::cout << "cMin: (" << scene->aabb.min_x << ", " << scene->aabb.min_y << ", " << scene->aabb.min_z << ")\n";
+  std::cout << "cMax: (" << scene->aabb.max_x << ", " << scene->aabb.max_y << ", " << scene->aabb.max_z << ")\n";
 
   return *scene;
 }

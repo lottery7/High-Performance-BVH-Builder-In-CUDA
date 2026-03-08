@@ -12,12 +12,12 @@ __global__ void fill_kernel(T* arr, T val, size_t n)
 namespace cuda
 {
   template <typename T>
-  void fill(const cudaStream_t& stream, T* arr, T val, size_t n)
+  void fill(cudaStream_t stream, T* arr, T val, size_t n)
   {
     fill_kernel<<<compute_grid(n), DEFAULT_GROUP_SIZE, 0, stream>>>(arr, val, n);
   }
 
-  template void fill(const cudaStream_t& stream, unsigned int* arr, unsigned int val, size_t n);
-  template void fill(const cudaStream_t& stream, int* arr, int val, size_t n);
-  template void fill(const cudaStream_t& stream, float* arr, float val, size_t n);
+  template void fill(cudaStream_t stream, unsigned int* arr, unsigned int val, size_t n);
+  template void fill(cudaStream_t stream, int* arr, int val, size_t n);
+  template void fill(cudaStream_t stream, float* arr, float val, size_t n);
 }  // namespace cuda

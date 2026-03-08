@@ -1,52 +1,17 @@
 #pragma once
 
-#include <cuda_runtime.h>
 #include <driver_types.h>
 
-#include "libbase/string_utils.h"
+#include <string>
 
-#define CUDA_SAFE_CALL(expr) cuda::reportError(expr, __LINE__)
-#define CUDA_CHECK_STREAM(expr) cuda::reportError(cudaStreamSynchronize(expr), __LINE__)
+#define CUDA_SAFE_CALL(expr) cuda::report_error(expr, __LINE__)
+#define CUDA_CHECK_STREAM(expr) cuda::report_error(cudaStreamSynchronize(expr), __LINE__)
 
 namespace cuda
 {
-  ::std::string formatError(cudaError_t code);
+  ::std::string format_error(cudaError_t code);
 
-  void reportError(cudaError_t err, int line, const ::std::string& prefix = ::std::string());
+  void report_error(cudaError_t err, int line, const ::std::string& prefix = ::std::string());
 
-  void selectCudaDevice(int argc, char** argv);
-
-  class CudaTimer
-  {
-    cudaEvent_t start_{};
-    cudaEvent_t stop_{};
-    cudaStream_t stream_{};
-
-   public:
-    explicit CudaTimer(cudaStream_t stream) : stream_(stream)
-    {
-      CUDA_SAFE_CALL(cudaEventCreate(&start_));
-      CUDA_SAFE_CALL(cudaEventCreate(&stop_));
-      CUDA_SAFE_CALL(cudaEventRecord(start_, stream_));
-    }
-
-    ~CudaTimer()
-    {
-      cudaEventDestroy(start_);
-      cudaEventDestroy(stop_);
-    }
-
-    CudaTimer(const CudaTimer&) = delete;
-    CudaTimer& operator=(const CudaTimer&) = delete;
-
-    double elapsed()
-    {
-      CUDA_SAFE_CALL(cudaEventRecord(stop_, stream_));
-      CUDA_SAFE_CALL(cudaEventSynchronize(stop_));
-
-      float ms = 0.f;
-      CUDA_SAFE_CALL(cudaEventElapsedTime(&ms, start_, stop_));
-      return ms * 1e-3;
-    }
-  };
+  void select_cuda_device(int argc, char** argv);
 }  // namespace cuda

@@ -15,7 +15,7 @@
    focal_mm — фокус в мм (удобно иметь под рукой).
    width, height — габариты изображения в пикселях.
 */
-typedef struct CameraIntrinsicsGPU {
+struct CameraIntrinsics {
   float fx;               /* [px] */
   float fy;               /* [px] */
   float cx;               /* [px] */
@@ -24,7 +24,7 @@ typedef struct CameraIntrinsicsGPU {
   float focal_mm;         /* [mm] */
   unsigned int width;     /* [px] */
   unsigned int height;    /* [px] */
-} CameraIntrinsicsGPU;
+};
 
 /* -------- Extrinsics --------
    X_cam = R * X_world + t
@@ -34,36 +34,34 @@ typedef struct CameraIntrinsicsGPU {
    t — перевод в камеру.
    C — центр камеры в мире: C = -R^T * t (заполните на хосте, если нужно).
 */
-typedef struct CameraExtrinsicsGPU {
+struct CameraExtrinsics {
   float R[9]; /* row-major 3x3: r00,r01,r02, r10,r11,r12, r20,r21,r22 */
   float t[3]; /* translation */
   float C[3]; /* camera center (world), optional to use */
-} CameraExtrinsicsGPU;
+};
 
 /* -------- View (прочие настройки проекции/визуализации) -------- */
-typedef struct ViewSettingsGPU {
+struct ViewSettings {
   float near_plane;
   float far_plane;
   float track_scale;
-} ViewSettingsGPU;
+};
 
-#define CAMERA_VIEW_GPU_MAGIC_BITS_GUARD 239239239
+#define CAMERA_VIEW_MAGIC_BITS_GUARD 239239239
 
 /* -------- Full packed view -------- */
-typedef struct CameraViewGPU {
-  CameraIntrinsicsGPU K;
-  CameraExtrinsicsGPU E;
-  ViewSettingsGPU view;
+struct CameraView {
+  CameraIntrinsics K;
+  CameraExtrinsics E;
+  ViewSettings view;
   unsigned int magic_bits_guard;
-} CameraViewGPU;
+};
 
 /* ---------------- Host-only layout checks ---------------- */
 static_assert(sizeof(float) == 4, "float must be 32-bit");
 static_assert(sizeof(unsigned int) == 4, "unsigned int must be 32-bit");
 
-static_assert(sizeof(CameraIntrinsicsGPU) == (4 * 7 + 4 * 2), "Intrinsics size mismatch"); /* 7 floats + 2 uints = 36 bytes */
-static_assert(sizeof(CameraExtrinsicsGPU) == (9 + 3 + 3) * 4, "Extrinsics size mismatch");
-static_assert(sizeof(ViewSettingsGPU) == 3 * 4, "ViewSettings size mismatch");
-static_assert(
-    sizeof(CameraViewGPU) == sizeof(CameraIntrinsicsGPU) + sizeof(CameraExtrinsicsGPU) + sizeof(ViewSettingsGPU) + 4,
-    "CameraView size mismatch");
+static_assert(sizeof(CameraIntrinsics) == (4 * 7 + 4 * 2), "Intrinsics size mismatch"); /* 7 floats + 2 uints = 36 bytes */
+static_assert(sizeof(CameraExtrinsics) == (9 + 3 + 3) * 4, "Extrinsics size mismatch");
+static_assert(sizeof(ViewSettings) == 3 * 4, "ViewSettings size mismatch");
+static_assert(sizeof(CameraView) == sizeof(CameraIntrinsics) + sizeof(CameraExtrinsics) + sizeof(ViewSettings) + 4, "CameraView size mismatch");

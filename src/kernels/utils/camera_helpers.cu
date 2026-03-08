@@ -1,4 +1,4 @@
-#include "../structs/camera_gpu.h"
+#include "../structs/camera.h"
 
 // Normalize float3
 static __device__ float3 normalize3(const float3 v)
@@ -8,7 +8,7 @@ static __device__ float3 normalize3(const float3 v)
 }
 
 // Make primary ray through pixel coordinates (u, v), f.e. (u, v) can be equal to (i+0.5, j+0.5)
-static __device__ void make_primary_ray(const CameraViewGPU& cam, float u, float v, float3& ray_o, float3& ray_d)
+static __device__ void make_primary_ray(const CameraView& cam, float u, float v, float3& ray_o, float3& ray_d)
 {
   // 1) (u, v) - pixel center
 
