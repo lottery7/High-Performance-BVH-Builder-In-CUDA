@@ -6,18 +6,17 @@
 #include <optional>
 
 #include "experiments/common.h"
-#include "experiments/kitten_lbvh.h"
-#include "experiments/my_cpu_lbvh.h"
 #include "experiments/my_gpu_lbvh.h"
 #include "io/camera_reader.h"
 #include "io/scene_reader.h"
 #include "kernels/defines.h"
 #include "kernels/kernels.h"
+#include "kernels/structs/framebuffers.h"
+#include "kernels/structs/scene.h"
 #include "utils/cuda_utils.h"
-#include "utils/device_wrappers.h"
 #include "utils/utils.h"
 
-static void process_scene(cudaStream_t stream, const std::string& scene_path, int n_iters)
+static void process_scene(cudaStream_t stream, const std::string& scene_path)
 {
   std::cout << "____________________________________________________________________________________________" << std::endl;
 
@@ -48,8 +47,9 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path, in
   const unsigned int width = camera.K.width;
   const unsigned int height = camera.K.height;
 
-  SceneDevice scene_gpu(stream, scene, camera);
-  FramebuffersDevice fb(stream, width, height);
+  cuda::Scene scene_gpu(stream, scene, camera);
+  cuda::Framebuffers fb(stream, width, height);
+  CUDA_SYNC_STREAM(stream);
 
   std::cout << "Scene " << scene_name << " loaded to GPU: " << scene.vertices.size() << " vertices, " << scene.faces.size() << " faces in "
             << loading_data_time << " sec" << std::endl;
@@ -59,26 +59,26 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path, in
   std::optional<RayTracingResult> ground_truth;
 
   // CPU LBVH
-  {
-    auto res = run_cpu_lbvh(stream, scene, scene_gpu, fb, results_dir, n_iters);
-    if (ground_truth)
-      validate_against_ground_truth(*ground_truth, res, width, height);
-    else
-      ground_truth = res;
-  }
+  // {
+  //   auto res = run_cpu_lbvh(stream, scene, scene_gpu, fb, results_dir);
+  //   if (ground_truth)
+  //     validate_against_ground_truth(*ground_truth, res, width, height);
+  //   else
+  //     ground_truth = res;
+  // }
 
   // My implementation of LBVH
   {
-    auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir, n_iters);
+    auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir);
     if (ground_truth)
       validate_against_ground_truth(*ground_truth, res, width, height);
     else
       ground_truth = res;
   }
 
-  // Kitten LBVH (works VERY VERY BAD on large scenes)
+  // Kitten LBVH (works VERY bad on large scenes)
   // {
-  //   auto res = run_kitten_lbvh(scene_gpu, fb, results_dir, n_iters);
+  //   auto res = run_kitten_lbvh(scene_gpu, fb, results_dir);
   //   if (ground_truth)
   //     validate_against_ground_truth(*ground_truth, res, width, height);
   //   else
@@ -93,16 +93,16 @@ static void run(int argc, char** argv)
   CUDA_SAFE_CALL(cudaStreamCreate(&stream));
 
   std::vector<std::string> scenes = {
-      "data/gnome/gnome.ply",
+      // // "data/gnome/gnome.ply",
       // "data/powerplant/powerplant.obj",
       // "data/san-miguel/san-miguel.obj",
+      // "data/hairball/hairball.obj",
   };
-
-  constexpr int n_iters = 10;
-
   std::cout << "Using " << AO_SAMPLES << " ray samples for ambient occlusion" << std::endl;
 
-  for (const std::string& scene_path : scenes) process_scene(stream, scene_path, n_iters);
+  for (const std::string& scene_path : scenes) {
+    process_scene(stream, scene_path);
+  }
 
   CUDA_SAFE_CALL(cudaStreamDestroy(stream));
 }

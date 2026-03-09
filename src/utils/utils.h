@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cuda_runtime_api.h>
+
 #include <numeric>
 
 #include "../experiments/common.h"
@@ -87,8 +89,8 @@ inline void report_sah(const std::vector<BVHNode>& bvh_nodes)
     }
   }
 
-  constexpr float C_trav = 3;   // NOLINT(*-identifier-naming)
-  constexpr float C_isect = 2;  // NOLINT(*-identifier-naming)
+  constexpr float C_trav = 2;   // NOLINT(*-identifier-naming)
+  constexpr float C_isect = 3;  // NOLINT(*-identifier-naming)
 
   float sah = 0;
   for (int i = 0; i < leaves_start; i++) sah += C_trav * bvh_nodes[i].aabb.surface_area();
@@ -98,11 +100,10 @@ inline void report_sah(const std::vector<BVHNode>& bvh_nodes)
   std::cout << "SAH = " << sah << " (C_trav=" << C_trav << ", C_isect=" << C_isect << ")" << std::endl;
 }
 
-inline void report_sah(cudaStream_t stream, unsigned int n_faces, const BVHNode* d_lbvh_nodes)
+inline void report_sah(cudaStream_t stream, const BVHNode* d_bvh, unsigned int n_nodes)
 {
-  const unsigned int n_total = 2 * n_faces - 1;
-  std::vector<BVHNode> h_nodes(n_total);
-  CUDA_SAFE_CALL(cudaMemcpyAsync(h_nodes.data(), d_lbvh_nodes, sizeof(BVHNode) * n_total, cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK_STREAM(stream);
+  std::vector<BVHNode> h_nodes(n_nodes);
+  CUDA_SAFE_CALL(cudaMemcpyAsync(h_nodes.data(), d_bvh, sizeof(BVHNode) * n_nodes, cudaMemcpyDeviceToHost, stream));
+  CUDA_SYNC_STREAM(stream);
   report_sah(h_nodes);
 }

@@ -1,6 +1,9 @@
 #pragma once
 
-#include "../utils/device_wrappers.h"
+#include <cuda_runtime.h>
+
+#include "../kernels/structs/framebuffers.h"
+#include "../kernels/structs/scene.h"
 #include "common.h"
 
-RayTracingResult run_my_gpu_lbvh(cudaStream_t stream, const SceneDevice& scene_gpu, FramebuffersDevice& fb, const std::string& results_dir, int n_iters);
+RayTracingResult run_my_gpu_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cuda::Framebuffers& fb, const std::string& results_dir);

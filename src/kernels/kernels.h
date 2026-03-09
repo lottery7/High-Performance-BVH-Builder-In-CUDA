@@ -25,27 +25,7 @@ namespace cuda
       CameraView* camera,
       unsigned int n_faces);
 
-  void fill_indices(cudaStream_t stream, unsigned int* indices, unsigned int n);
-
-  void compute_mortons(
-      cudaStream_t stream,
-      const unsigned int* d_faces,
-      const float* d_vertices,
-      unsigned int n_faces,
-      AABB scene_aabb,
-      unsigned int* d_morton_codes);
-
-  void build_lbvh(cudaStream_t stream, const unsigned int* d_morton_codes, unsigned int n_faces, BVHNode* d_lbvh);
-
-  void build_aabb_leaves(
-      cudaStream_t stream,
-      const float* d_vertices,
-      const unsigned int* d_faces,
-      const unsigned int* d_indices,
-      unsigned int n_faces,
-      BVHNode* d_lbvh);
-
-  void build_aabb(cudaStream_t stream, unsigned int n_faces, BVHNode* d_lbvh, int* d_parent, unsigned int* d_flags);
+  void fill_indices(cudaStream_t stream, unsigned int* d_indices, unsigned int n);
 
   template <typename K, typename V>
   void sort_by_key(cudaStream_t stream, K* d_keys, V* d_vals, size_t n);
@@ -65,8 +45,4 @@ namespace cuda
       BVHNode* d_bvh_nodes,
       uint32_t* d_leaf_tri_indices,
       unsigned int n_faces);
-
-  void compute_faces_aabb(cudaStream_t stream, const float* d_vertices, const unsigned int* d_faces, AABB* d_face_bounds, unsigned int n_faces);
-
-  void toru_ninja_lbvh(const float* d_vertices, const unsigned int* d_faces, AABB* d_face_bounds, unsigned int n_faces);
 }  // namespace cuda

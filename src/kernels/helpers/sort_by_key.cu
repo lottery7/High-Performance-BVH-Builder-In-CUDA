@@ -9,9 +9,9 @@ namespace cuda
   template <typename K, typename V>
   void sort_by_key(cudaStream_t stream, K* d_keys, V* d_vals, size_t n)
   {
-    thrust::device_ptr<K> keys(d_keys);
-    thrust::device_ptr<V> vals(d_vals);
-    thrust::sort_by_key(thrust::cuda::par.on(stream), keys, keys + n, vals);
+    auto d_ptr_keys = thrust::device_pointer_cast(d_keys);
+    auto d_ptr_vals = thrust::device_pointer_cast(d_vals);
+    thrust::sort_by_key(thrust::cuda::par_nosync.on(stream), d_ptr_keys, d_ptr_keys + n, d_ptr_vals);
   }
 
   template void sort_by_key(cudaStream_t stream, unsigned int* d_keys, unsigned int* d_vals, size_t n);

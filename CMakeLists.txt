@@ -11,25 +11,28 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 add_subdirectory(libs)
 
 # ---- Sources / Headers ----
-set(HEADERS
-        src/kernels/kernels.h
-        src/kernels/structs/aabb.h
-        src/kernels/structs/bvh_node.h
-        src/kernels/structs/camera.h
-        src/kernels/structs/morton_code.h
-        src/io/camera_reader.h
-        src/io/scene_reader.h
-        src/utils/cuda_utils.h
-        src/utils/exceptions.h
-        src/debug/debug_geometry.h
-        src/debug/debug_bvh.h
-        src/utils/utils.h
-        src/utils/device_wrappers.h
-        src/experiments/my_cpu_lbvh.h
-        src/experiments/my_gpu_lbvh.h
-        src/experiments/common.h
-        src/experiments/kitten_lbvh.h
-)
+#set(HEADERS
+#        src/io/camera_reader.h
+#        src/io/scene_reader.h
+#        src/debug/debug_geometry.h
+#        src/debug/debug_bvh.h
+#        src/utils/cuda_utils.h
+#        src/utils/exceptions.h
+#        src/utils/utils.h
+#        src/utils/device_wrappers.h
+#        src/experiments/my_cpu_lbvh.h
+#        src/experiments/my_gpu_lbvh.h
+#        src/experiments/common.h
+#        src/experiments/kitten_lbvh.h
+#        src/kernels/kernels.h
+#        src/kernels/structs/aabb.h
+#        src/kernels/structs/bvh_node.h
+#        src/kernels/structs/camera.h
+#        src/kernels/structs/morton_code.h
+#        src/kernels/structs/scene.h
+#        src/kernels/structs/frame_buffers.h
+#        src/kernels/my_lbvh/my_lbvh.h
+#)
 
 set(SOURCES
         src/io/camera_reader.cpp
@@ -41,21 +44,16 @@ set(SOURCES
 )
 
 set(CUDA_SOURCES
-        src/kernels/utils/camera_helpers.cu
-        src/kernels/utils/geometry_helpers.cu
-        src/kernels/utils/random_helpers.cu
+        src/kernels/helpers/camera_helpers.cu
+        src/kernels/helpers/geometry_helpers.cu
+        src/kernels/helpers/random_helpers.cu
         src/kernels/ray_tracing/ray_tracing_render_using_bvh.cu
-        src/kernels/utils/fill.cu
-        src/kernels/bvh_common/fill_indices.cu
-        src/kernels/bvh_common/compute_mortons.cu
-        src/kernels/lbvh/build_lbvh.cu
-        src/kernels/lbvh/build_aabb.cu
-        src/kernels/lbvh/build_aabb_leaves.cu
-        src/kernels/utils/sort_by_key.cu
+        src/kernels/helpers/fill.cu
+        src/kernels/helpers/fill_indices.cu
+        src/kernels/helpers/sort_by_key.cu
         src/kernels/kitten_utils/compute_faces_aabb.cu
         src/kernels/kitten_utils/convert_to_bvh_nodes.cu
-        src/kernels/toru_ninja_utils/build_bvh.cu
-        #        src/kernels/toru_ninja_utils/convert_to_bvh_nodes.cu
+        src/kernels/my_lbvh/my_lbvh.cu
 )
 
 set(LIBRARIES
@@ -65,8 +63,6 @@ set(LIBRARIES
         libbase
         glm::glm
         KittenGpuLBVH
-        KittenEngine
-        ToruNinjaLBVH
 )
 
 # ---- Packages ----

@@ -5,7 +5,7 @@
 #include <string>
 
 #define CUDA_SAFE_CALL(expr) cuda::report_error(expr, __LINE__)
-#define CUDA_CHECK_STREAM(expr) cuda::report_error(cudaStreamSynchronize(expr), __LINE__)
+#define CUDA_SYNC_STREAM(expr) cuda::report_error(cudaStreamSynchronize(expr), __LINE__)
 
 namespace cuda
 {

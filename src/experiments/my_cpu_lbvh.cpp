@@ -1,5 +1,7 @@
 #pragma once
 
+#include "my_cpu_lbvh.h"
+
 #include <cuda_runtime_api.h>
 #include <libbase/stats.h>
 #include <libbase/timer.h>
@@ -11,22 +13,21 @@
 #include "../io/scene_reader.h"
 #include "../kernels/defines.h"
 #include "../kernels/kernels.h"
+#include "../kernels/structs/framebuffers.h"
+#include "../kernels/structs/scene.h"
 #include "../utils/cuda_utils.h"
-#include "../utils/device_wrappers.h"
 #include "../utils/utils.h"
-#include "my_cpu_lbvh.h"
 
 #define EXPERIMENT_NAME "My CPU LBVH"
 
 RayTracingResult run_cpu_lbvh(
     cudaStream_t stream,
     const SceneGeometry& scene,
-    const SceneDevice& scene_gpu,
-    FramebuffersDevice& fb,
-    const std::string& results_dir,
-    int n_iters)
+    const cuda::Scene& scene_gpu,
+    const cuda::Framebuffers& fb,
+    const std::string& results_dir)
 {
-  std::cout << "Experiment: " EXPERIMENT_NAME << std::endl;
+  std::cout << "=== Experiment: " EXPERIMENT_NAME << std::endl;
 
   const unsigned int width = fb.width;
   const unsigned int height = fb.height;
@@ -50,12 +51,12 @@ RayTracingResult run_cpu_lbvh(
   CUDA_SAFE_CALL(cudaMallocAsync(&d_sorted_indices, sizeof(unsigned int) * n_faces, stream));
   CUDA_SAFE_CALL(cudaMemcpyAsync(d_lbvh_nodes, h_nodes.data(), h_nodes.size() * sizeof(BVHNode), cudaMemcpyHostToDevice, stream));
   CUDA_SAFE_CALL(cudaMemcpyAsync(d_sorted_indices, h_indices.data(), h_indices.size() * sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK_STREAM(stream);
+  CUDA_SYNC_STREAM(stream);
 
   fb.clear();
 
   std::vector<double> rt_times;
-  for (int iter = 0; iter < n_iters + WARMUP_ITERS; ++iter) {
+  for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
     timer ray_tracing_t;
 
     cuda::ray_tracing_render_using_bvh(
@@ -70,7 +71,7 @@ RayTracingResult run_cpu_lbvh(
         fb.d_ao,
         scene_gpu.d_camera,
         scene_gpu.n_faces);
-    CUDA_CHECK_STREAM(stream);
+    CUDA_SYNC_STREAM(stream);
 
     if (iter >= WARMUP_ITERS) {
       rt_times.push_back(ray_tracing_t.elapsed());
@@ -88,7 +89,7 @@ RayTracingResult run_cpu_lbvh(
 
   CUDA_SAFE_CALL(cudaFreeAsync(d_sorted_indices, stream));
   CUDA_SAFE_CALL(cudaFreeAsync(d_lbvh_nodes, stream));
-  CUDA_CHECK_STREAM(stream);
+  CUDA_SYNC_STREAM(stream);
 
   return result;
 }

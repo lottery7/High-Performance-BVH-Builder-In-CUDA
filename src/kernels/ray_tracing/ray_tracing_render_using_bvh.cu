@@ -2,12 +2,12 @@
 
 #include "../../utils/utils.h"
 #include "../defines.h"
+#include "../helpers/camera_helpers.cu"
+#include "../helpers/geometry_helpers.cu"
+#include "../helpers/random_helpers.cu"
 #include "../helpers/rassert.cu"
 #include "../structs//bvh_node.h"
 #include "../structs/camera.h"
-#include "../utils/camera_helpers.cu"
-#include "../utils/geometry_helpers.cu"
-#include "../utils/random_helpers.cu"
 
 // BVH traversal: closest hit along ray
 __device__ bool bvh_closest_hit(
