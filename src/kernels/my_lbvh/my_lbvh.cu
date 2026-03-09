@@ -1,32 +1,9 @@
+#include "../../utils/defines.h"
 #include "../../utils/utils.h"
-#include "../defines.h"
 #include "../kernels.h"
 #include "../structs/aabb.h"
 #include "../structs/bvh_node.h"
 #include "../structs/morton_code.h"
-#include "../structs/scene.h"
-
-__device__ static unsigned int expand_bits(unsigned int v)
-{
-  v = (v * 0x00010001u) & 0xFF0000FFu;
-  v = (v * 0x00000101u) & 0x0F00F00Fu;
-  v = (v * 0x00000011u) & 0xC30C30C3u;
-  v = (v * 0x00000005u) & 0x49249249u;
-  return v;
-}
-
-__device__ static MortonCode get_morton_code(float x, float y, float z)
-{
-  unsigned int ix = min(max((int)(x * 1024.0f), 0), 1023);
-  unsigned int iy = min(max((int)(y * 1024.0f), 0), 1023);
-  unsigned int iz = min(max((int)(z * 1024.0f), 0), 1023);
-
-  unsigned int xx = expand_bits(ix);
-  unsigned int yy = expand_bits(iy);
-  unsigned int zz = expand_bits(iz);
-
-  return (xx << 2) | (yy << 1) | zz;
-}
 
 __global__ void compute_mortons_kernel(AABB scene_aabb, unsigned int *faces, float *vertices, MortonCode *morton_codes, unsigned int n_faces)
 {

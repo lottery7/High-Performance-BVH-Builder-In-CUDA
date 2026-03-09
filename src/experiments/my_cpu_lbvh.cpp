@@ -9,14 +9,13 @@
 #include <filesystem>
 #include <iostream>
 
-#include "../cpu_helpers/build_bvh_cpu.h"
 #include "../io/scene_reader.h"
-#include "../kernels/defines.h"
 #include "../kernels/kernels.h"
 #include "../kernels/structs/framebuffers.h"
 #include "../kernels/structs/scene.h"
-#include "../utils/cuda_utils.h"
+#include "../utils/defines.h"
 #include "../utils/utils.h"
+#include "lbvh_cpu.h"
 
 #define EXPERIMENT_NAME "My CPU LBVH"
 
@@ -27,7 +26,7 @@ RayTracingResult run_cpu_lbvh(
     const cuda::Framebuffers& fb,
     const std::string& results_dir)
 {
-  std::cout << "=== Experiment: " EXPERIMENT_NAME << std::endl;
+  std::cout << "\n=== Experiment: " EXPERIMENT_NAME << std::endl;
 
   const unsigned int width = fb.width;
   const unsigned int height = fb.height;

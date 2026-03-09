@@ -3,8 +3,6 @@
 #include <cuda_runtime_api.h>
 
 #include "../../io/scene_reader.h"
-#include "../../kernels/kernels.h"
-#include "../../utils/cuda_utils.h"
 #include "camera.h"
 
 namespace cuda

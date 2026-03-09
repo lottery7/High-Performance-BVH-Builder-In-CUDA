@@ -1,5 +1,5 @@
+#include "../../utils/defines.h"
 #include "../../utils/utils.h"
-#include "../defines.h"
 
 template <typename T>
 __global__ void fill_kernel(T* arr, T val, size_t n)

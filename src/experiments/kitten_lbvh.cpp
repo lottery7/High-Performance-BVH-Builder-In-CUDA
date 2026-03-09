@@ -2,8 +2,7 @@
 
 #include <filesystem>
 
-#include "../kernels/defines.h"
-#include "../utils/cuda_utils.h"
+#include "../utils/defines.h"
 #include "../utils/utils.h"
 #include "KittenEngine/includes/modules/Bound.h"
 #include "KittenGpuLBVH/lbvh.cuh"
@@ -15,7 +14,7 @@
 
 RayTracingResult run_kitten_lbvh(const cuda::Scene& scene_gpu, cuda::Framebuffers& fb, const std::string& results_dir)
 {
-  std::cout << "=== Experiment: " EXPERIMENT_NAME << std::endl;
+  std::cout << "\n=== Experiment: " EXPERIMENT_NAME << std::endl;
 
   const unsigned int width = fb.width;
   const unsigned int height = fb.height;

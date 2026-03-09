@@ -5,11 +5,10 @@
 
 #include <filesystem>
 
-#include "../kernels/defines.h"
 #include "../kernels/my_lbvh/my_lbvh.h"
 #include "../kernels/structs/framebuffers.h"
 #include "../kernels/structs/scene.h"
-#include "../utils/cuda_utils.h"
+#include "../utils/defines.h"
 #include "../utils/utils.h"
 #include "libbase/timer.h"
 
@@ -17,7 +16,7 @@
 
 RayTracingResult run_my_gpu_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cuda::Framebuffers& fb, const std::string& results_dir)
 {
-  std::cout << "=== Experiment: " EXPERIMENT_NAME << std::endl;
+  std::cout << "\n=== Experiment: " EXPERIMENT_NAME << std::endl;
 
   const unsigned int width = fb.width;
   const unsigned int height = fb.height;

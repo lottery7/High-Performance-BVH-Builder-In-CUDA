@@ -11,40 +11,16 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 add_subdirectory(libs)
 
 # ---- Sources / Headers ----
-#set(HEADERS
-#        src/io/camera_reader.h
-#        src/io/scene_reader.h
-#        src/debug/debug_geometry.h
-#        src/debug/debug_bvh.h
-#        src/utils/cuda_utils.h
-#        src/utils/exceptions.h
-#        src/utils/utils.h
-#        src/utils/device_wrappers.h
-#        src/experiments/my_cpu_lbvh.h
-#        src/experiments/my_gpu_lbvh.h
-#        src/experiments/common.h
-#        src/experiments/kitten_lbvh.h
-#        src/kernels/kernels.h
-#        src/kernels/structs/aabb.h
-#        src/kernels/structs/bvh_node.h
-#        src/kernels/structs/camera.h
-#        src/kernels/structs/morton_code.h
-#        src/kernels/structs/scene.h
-#        src/kernels/structs/frame_buffers.h
-#        src/kernels/my_lbvh/my_lbvh.h
-#)
-
 set(SOURCES
         src/io/camera_reader.cpp
         src/io/scene_reader.cpp
-        src/utils/cuda_utils.cpp
         src/experiments/my_cpu_lbvh.cpp
         src/experiments/my_gpu_lbvh.cpp
         src/experiments/kitten_lbvh.cpp
 )
 
 set(CUDA_SOURCES
-        src/kernels/helpers/camera_helpers.cu
+        src/kernels/helpers/camera_helpers.cuh
         src/kernels/helpers/geometry_helpers.cu
         src/kernels/helpers/random_helpers.cu
         src/kernels/ray_tracing/ray_tracing_render_using_bvh.cu

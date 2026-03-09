@@ -13,7 +13,7 @@ struct AABB {
   float max_y;
   float max_z;
 
-  float surface_area() const
+  __host__ __device__ float surface_area() const
   {
     float dx = max_x - min_x;
     float dy = max_y - min_y;

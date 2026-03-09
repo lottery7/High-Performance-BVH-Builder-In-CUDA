@@ -10,7 +10,7 @@
 
 #include "../kernels/structs/aabb.h"
 #include "../kernels/structs/bvh_node.h"
-#include "morton_code_cpu.h"
+#include "../kernels/structs/morton_code.h"
 
 // count leading zeros for 32-bit unsigned
 static int clz32(uint32_t x)
@@ -27,7 +27,7 @@ static int clz32(uint32_t x)
 
 // Compute common prefix length between sorted Morton codes at indices i and j
 // Uses index as a tiebreaker when codes are equal (like Karras 2013).
-static inline int common_prefix(const std::vector<MortonCode>& codes, int N, int i, int j)
+static int common_prefix(const std::vector<MortonCode>& codes, int N, int i, int j)
 {
   if (j < 0 || j >= N) return -1;
 
@@ -46,7 +46,7 @@ static inline int common_prefix(const std::vector<MortonCode>& codes, int N, int
 }
 
 // Determine range [first, last] of primitives covered by internal node i
-static inline void determine_range(const std::vector<uint32_t>& codes, int N, int i, int& outFirst, int& outLast)
+static void determine_range(const std::vector<uint32_t>& codes, int N, int i, int& outFirst, int& outLast)
 {
   int cpL = common_prefix(codes, N, i, i - 1);
   int cpR = common_prefix(codes, N, i, i + 1);
@@ -77,7 +77,7 @@ static inline void determine_range(const std::vector<uint32_t>& codes, int N, in
 
 // Find split position inside range [first, last] using the same
 // prefix metric as determine_range (code + index tie-break)
-static inline int find_split(const std::vector<uint32_t>& codes, int first, int last)
+static int find_split(const std::vector<uint32_t>& codes, int first, int last)
 {
   const int N = static_cast<int>(codes.size());
 
@@ -226,7 +226,7 @@ inline void buildLBVH_CPU(
     ny = std::min(std::max(ny, 0.0f), 1.0f);
     nz = std::min(std::max(nz, 0.0f), 1.0f);
 
-    prims[i].morton = morton3D(nx, ny, nz);
+    prims[i].morton = get_morton_code(nx, ny, nz);
   }
 
   // 3) Sort primitives by Morton code

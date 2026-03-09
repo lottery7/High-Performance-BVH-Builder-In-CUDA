@@ -1,7 +1,6 @@
 #include <thrust/device_ptr.h>
 #include <thrust/sort.h>
 
-#include "../../utils/cuda_utils.h"
 #include "../../utils/utils.h"
 
 namespace cuda

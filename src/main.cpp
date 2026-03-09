@@ -6,14 +6,14 @@
 #include <optional>
 
 #include "experiments/common.h"
+#include "experiments/kitten_lbvh.h"
+#include "experiments/my_cpu_lbvh.h"
 #include "experiments/my_gpu_lbvh.h"
 #include "io/camera_reader.h"
 #include "io/scene_reader.h"
-#include "kernels/defines.h"
-#include "kernels/kernels.h"
 #include "kernels/structs/framebuffers.h"
 #include "kernels/structs/scene.h"
-#include "utils/cuda_utils.h"
+#include "utils/defines.h"
 #include "utils/utils.h"
 
 static void process_scene(cudaStream_t stream, const std::string& scene_path)
@@ -59,13 +59,13 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path)
   std::optional<RayTracingResult> ground_truth;
 
   // CPU LBVH
-  // {
-  //   auto res = run_cpu_lbvh(stream, scene, scene_gpu, fb, results_dir);
-  //   if (ground_truth)
-  //     validate_against_ground_truth(*ground_truth, res, width, height);
-  //   else
-  //     ground_truth = res;
-  // }
+  {
+    auto res = run_cpu_lbvh(stream, scene, scene_gpu, fb, results_dir);
+    if (ground_truth)
+      validate_against_ground_truth(*ground_truth, res, width, height);
+    else
+      ground_truth = res;
+  }
 
   // My implementation of LBVH
   {
@@ -77,13 +77,13 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path)
   }
 
   // Kitten LBVH (works VERY bad on large scenes)
-  // {
-  //   auto res = run_kitten_lbvh(scene_gpu, fb, results_dir);
-  //   if (ground_truth)
-  //     validate_against_ground_truth(*ground_truth, res, width, height);
-  //   else
-  //     ground_truth = res;
-  // }
+  {
+    auto res = run_kitten_lbvh(scene_gpu, fb, results_dir);
+    if (ground_truth)
+      validate_against_ground_truth(*ground_truth, res, width, height);
+    else
+      ground_truth = res;
+  }
 }
 
 static void run(int argc, char** argv)
@@ -93,7 +93,7 @@ static void run(int argc, char** argv)
   CUDA_SAFE_CALL(cudaStreamCreate(&stream));
 
   std::vector<std::string> scenes = {
-      // // "data/gnome/gnome.ply",
+      "data/gnome/gnome.ply",
       // "data/powerplant/powerplant.obj",
       // "data/san-miguel/san-miguel.obj",
       // "data/hairball/hairball.obj",

@@ -1,11 +1,10 @@
 #include <cstdio>
 
+#include "../../utils/defines.h"
 #include "../../utils/utils.h"
-#include "../defines.h"
-#include "../helpers/camera_helpers.cu"
+#include "../helpers/camera_helpers.cuh"
 #include "../helpers/geometry_helpers.cu"
 #include "../helpers/random_helpers.cu"
-#include "../helpers/rassert.cu"
 #include "../structs//bvh_node.h"
 #include "../structs/camera.h"
 
