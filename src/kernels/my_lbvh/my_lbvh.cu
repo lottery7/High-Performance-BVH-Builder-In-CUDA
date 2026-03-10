@@ -5,43 +5,14 @@
 #include "../structs/bvh_node.h"
 #include "../structs/morton_code.h"
 
-__global__ void compute_mortons_kernel(AABB scene_aabb, unsigned int *faces, float *vertices, MortonCode *morton_codes, unsigned int n_faces)
-{
-  unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
-  if (index >= n_faces) return;
-
-  const float eps = 1e-9f;
-  float dx = fmaxf(scene_aabb.max_x - scene_aabb.min_x, eps);
-  float dy = fmaxf(scene_aabb.max_y - scene_aabb.min_y, eps);
-  float dz = fmaxf(scene_aabb.max_z - scene_aabb.min_z, eps);
-
-  unsigned int f0 = faces[3 * index + 0];
-  unsigned int f1 = faces[3 * index + 1];
-  unsigned int f2 = faces[3 * index + 2];
-
-  float3 v0 = {vertices[3 * f0 + 0], vertices[3 * f0 + 1], vertices[3 * f0 + 2]};
-  float3 v1 = {vertices[3 * f1 + 0], vertices[3 * f1 + 1], vertices[3 * f1 + 2]};
-  float3 v2 = {vertices[3 * f2 + 0], vertices[3 * f2 + 1], vertices[3 * f2 + 2]};
-
-  float cx = (v0.x + v1.x + v2.x) / 3.0f;
-  float cy = (v0.y + v1.y + v2.y) / 3.0f;
-  float cz = (v0.z + v1.z + v2.z) / 3.0f;
-
-  float nx = fminf(fmaxf((cx - scene_aabb.min_x) / dx, 0.0f), 1.0f);
-  float ny = fminf(fmaxf((cy - scene_aabb.min_y) / dy, 0.0f), 1.0f);
-  float nz = fminf(fmaxf((cz - scene_aabb.min_z) / dz, 0.0f), 1.0f);
-
-  morton_codes[index] = get_morton_code(nx, ny, nz);
-}
-
-__device__ __forceinline__ static int common_bits_from(MortonCode *morton_codes, int n, int i, int j)
+__device__ __forceinline__ int common_bits_from(MortonCode *morton_codes, int n, int i, int j)
 {
   if (i < 0 || j < 0 || i >= n || j >= n) return -1;
   if (morton_codes[i] == morton_codes[j]) return 32 + __clz(static_cast<unsigned int>(i) ^ static_cast<unsigned int>(j));
-  return __clz(static_cast<unsigned int>(morton_codes[i]) ^ static_cast<unsigned int>(morton_codes[j]));
+  return __clz(morton_codes[i] ^ morton_codes[j]);
 }
 
-__global__ void build_bvh_kernel(BVHNode *bvh, MortonCode *morton_codes, unsigned int n_faces)
+__global__ static void build_bvh_kernel(BVHNode *bvh, MortonCode *morton_codes, unsigned int n_faces)
 {
   int index = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
   if (index >= n_faces - 1) return;
@@ -55,7 +26,7 @@ __global__ void build_bvh_kernel(BVHNode *bvh, MortonCode *morton_codes, unsigne
   while (common_bits_from(morton_codes, n_faces, index, index + r_max * direction) > dmin) r_max *= 2;
 
   int r = 0;
-  for (int t = r_max / 2; t > 0; t /= 2) {
+  for (int t = r_max >> 1; t > 0; t >>= 1) {
     if (common_bits_from(morton_codes, n_faces, index, index + (r + t) * direction) > dmin) r += t;
   }
 
@@ -76,7 +47,7 @@ __global__ void build_bvh_kernel(BVHNode *bvh, MortonCode *morton_codes, unsigne
   bvh[index].right_child_index = (max_val == y + 1) ? n_faces - 1 + max_val : y + 1;
 }
 
-__global__ void build_aabb_leaves_kernel(BVHNode *bvh, unsigned int *faces, float *vertices, unsigned int *indices, unsigned int n_faces)
+__global__ static void build_aabb_leaves_kernel(BVHNode *bvh, unsigned int *faces, float *vertices, unsigned int *indices, unsigned int n_faces)
 {
   unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index >= n_faces) return;
@@ -103,7 +74,7 @@ __global__ void build_aabb_leaves_kernel(BVHNode *bvh, unsigned int *faces, floa
   bvh[leaf_index].right_child_index = NO_NODE_ID;
 }
 
-__global__ void build_aabb_kernel(BVHNode *bvh, unsigned int *parents, unsigned int *flags, unsigned int n_faces)
+__global__ static void build_aabb_kernel(BVHNode *bvh, unsigned int *parents, unsigned int *flags, unsigned int n_faces)
 {
   unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index >= n_faces) return;
@@ -131,7 +102,7 @@ __global__ void build_aabb_kernel(BVHNode *bvh, unsigned int *parents, unsigned 
 }
 
 // Вычисляем parent[] по построенным leftChildIndex/rightChildIndex
-__global__ void compute_parents_kernel(BVHNode *bvh, unsigned int *parents, unsigned int n_faces)
+__global__ static void compute_parents_kernel(BVHNode *bvh, unsigned int *parents, unsigned int n_faces)
 {
   unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
   if (index == 0) parents[0] = NO_NODE_ID;
@@ -160,7 +131,7 @@ namespace cuda::my_lbvh
   {
     fill_indices(stream, d_indices, n_faces);
 
-    compute_mortons_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(scene_aabb, d_faces, d_vertices, d_morton_codes, n_faces);
+    compute_morton_codes(stream, scene_aabb, d_faces, d_vertices, d_morton_codes, n_faces);
 
     sort_by_key(stream, d_morton_codes, d_indices, n_faces);
 

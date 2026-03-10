@@ -2,7 +2,6 @@
 
 #include <cuda_runtime_api.h>
 
-#include <numeric>
 #include <string>
 
 #include "../experiments/common.h"
@@ -138,7 +137,7 @@ inline void report_sah(const std::vector<BVHNode>& bvh_nodes)
 
   for (int i = 0; i < n_total; ++i) {
     auto& n = bvh_nodes[i];
-    if (i < leaves_start) {  // как вы считаете internal
+    if (i < leaves_start) {
       if (n.left_child_index >= n_total || n.right_child_index >= n_total) {
         std::printf("Bad child at node %d: L=%d R=%d\n", i, n.left_child_index, n.right_child_index);
         break;
@@ -163,4 +162,43 @@ inline void report_sah(cudaStream_t stream, const BVHNode* d_bvh, unsigned int n
   CUDA_SAFE_CALL(cudaMemcpyAsync(h_nodes.data(), d_bvh, sizeof(BVHNode) * n_nodes, cudaMemcpyDeviceToHost, stream));
   CUDA_SYNC_STREAM(stream);
   report_sah(h_nodes);
+}
+
+inline void report_sah_hploc(const std::vector<BVHNode>& hploc_nodes, unsigned int n_faces)
+{
+  for (int i = 0; i < hploc_nodes.size(); ++i) {
+    auto& n = hploc_nodes[i];
+    if (n.left_child_index != INVALID_INDEX) {
+      if (std::max(n.left_child_index, n.right_child_index) >= hploc_nodes.size())
+        std::printf("Bad child at node %d: L=%d R=%d\n", i, n.left_child_index, n.right_child_index);
+      break;
+    } else {
+      n_faces--;
+    }
+  }
+
+  curassert(n_faces != 0u, 445526);
+
+  constexpr float C_trav = 2;   // NOLINT(*-identifier-naming)
+  constexpr float C_isect = 3;  // NOLINT(*-identifier-naming)
+
+  float sah = 0;
+  for (int i = 0; i < hploc_nodes.size(); i++) {
+    if (hploc_nodes[i].left_child_index == INVALID_INDEX) {
+      sah += C_isect * hploc_nodes[i].aabb.surface_area();
+    } else {
+      sah += C_trav * hploc_nodes[i].aabb.surface_area();
+    }
+  }
+  sah /= hploc_nodes[hploc_nodes.size() - 1].aabb.surface_area();
+
+  std::cout << "SAH = " << sah << " (C_trav=" << C_trav << ", C_isect=" << C_isect << ")" << std::endl;
+}
+
+inline void report_sah_hploc(cudaStream_t stream, const BVHNode* d_bvh, unsigned int n_nodes, unsigned int n_faces)
+{
+  std::vector<BVHNode> h_nodes(n_nodes);
+  CUDA_SAFE_CALL(cudaMemcpyAsync(h_nodes.data(), d_bvh, sizeof(BVHNode) * n_nodes, cudaMemcpyDeviceToHost, stream));
+  CUDA_SYNC_STREAM(stream);
+  report_sah_hploc(h_nodes, n_faces);
 }

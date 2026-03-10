@@ -6,6 +6,7 @@
 #include <optional>
 
 #include "experiments/common.h"
+#include "experiments/hploc.h"
 #include "experiments/kitten_lbvh.h"
 #include "experiments/my_cpu_lbvh.h"
 #include "experiments/my_gpu_lbvh.h"
@@ -59,26 +60,35 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path)
   std::optional<RayTracingResult> ground_truth;
 
   // CPU LBVH
-  {
-    auto res = run_cpu_lbvh(stream, scene, scene_gpu, fb, results_dir);
-    if (ground_truth)
-      validate_against_ground_truth(*ground_truth, res, width, height);
-    else
-      ground_truth = res;
-  }
+  // {
+  //   auto res = run_cpu_lbvh(stream, scene, scene_gpu, fb, results_dir);
+  //   if (ground_truth)
+  //     validate_against_ground_truth(*ground_truth, res, width, height);
+  //   else
+  //     ground_truth = res;
+  // }
 
   // My implementation of LBVH
-  {
-    auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir);
-    if (ground_truth)
-      validate_against_ground_truth(*ground_truth, res, width, height);
-    else
-      ground_truth = res;
-  }
+  // {
+  //   auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir);
+  //   if (ground_truth)
+  //     validate_against_ground_truth(*ground_truth, res, width, height);
+  //   else
+  //     ground_truth = res;
+  // }
 
   // Kitten LBVH (works VERY bad on large scenes)
+  // {
+  //   auto res = run_kitten_lbvh(scene_gpu, fb, results_dir);
+  //   if (ground_truth)
+  //     validate_against_ground_truth(*ground_truth, res, width, height);
+  //   else
+  //     ground_truth = res;
+  // }
+
+  // My implementation of H-PLOC
   {
-    auto res = run_kitten_lbvh(scene_gpu, fb, results_dir);
+    auto res = run_hploc(stream, scene_gpu, fb, results_dir);
     if (ground_truth)
       validate_against_ground_truth(*ground_truth, res, width, height);
     else
@@ -94,9 +104,9 @@ static void run(int argc, char** argv)
 
   std::vector<std::string> scenes = {
       "data/gnome/gnome.ply",
+      // "data/hairball/hairball.obj",
       // "data/powerplant/powerplant.obj",
       // "data/san-miguel/san-miguel.obj",
-      // "data/hairball/hairball.obj",
   };
   std::cout << "Using " << AO_SAMPLES << " ray samples for ambient occlusion" << std::endl;
 

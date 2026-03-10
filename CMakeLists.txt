@@ -17,19 +17,23 @@ set(SOURCES
         src/experiments/my_cpu_lbvh.cpp
         src/experiments/my_gpu_lbvh.cpp
         src/experiments/kitten_lbvh.cpp
+        src/experiments/hploc.cpp
 )
 
 set(CUDA_SOURCES
         src/kernels/helpers/camera_helpers.cuh
         src/kernels/helpers/geometry_helpers.cu
         src/kernels/helpers/random_helpers.cu
-        src/kernels/ray_tracing/ray_tracing_render_using_bvh.cu
+        src/kernels/ray_tracing/rt_lbvh.cu
+        src/kernels/ray_tracing/rt_hploc.cu
         src/kernels/helpers/fill.cu
         src/kernels/helpers/fill_indices.cu
         src/kernels/helpers/sort_by_key.cu
         src/kernels/kitten_utils/compute_faces_aabb.cu
         src/kernels/kitten_utils/convert_to_bvh_nodes.cu
         src/kernels/my_lbvh/my_lbvh.cu
+        src/kernels/h_ploc/hploc.cu
+        src/kernels/helpers/compute_motron_codes.cu
 )
 
 set(LIBRARIES

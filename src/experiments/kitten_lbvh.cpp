@@ -55,7 +55,7 @@ RayTracingResult run_kitten_lbvh(const cuda::Scene& scene_gpu, cuda::Framebuffer
   std::vector<double> rt_times;
   for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
     timer rt_timer;
-    cuda::ray_tracing_render_using_bvh(
+    cuda::rt_lbvh(
         0,
         width,
         height,

@@ -1,56 +1,45 @@
-#include "my_gpu_lbvh.h"
+#include "hploc.h"
 
 #include <libbase/stats.h>
 #include <thrust/sort.h>
 
 #include <filesystem>
 
-#include "../kernels/my_lbvh/my_lbvh.h"
+#include "../kernels/h_ploc/hploc.h"
 #include "../kernels/structs/framebuffers.h"
 #include "../kernels/structs/scene.h"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
 #include "libbase/timer.h"
 
-#define EXPERIMENT_NAME "My GPU LBVH"
+#define EXPERIMENT_NAME "H-PLOC"
 
-RayTracingResult run_my_gpu_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cuda::Framebuffers& fb, const std::string& results_dir)
+RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
 {
   std::cout << "\n=== Experiment: " EXPERIMENT_NAME << std::endl;
 
   const unsigned int width = fb.width;
   const unsigned int height = fb.height;
-  const unsigned int n_faces = scene_gpu.n_faces;
-  const unsigned int n_nodes = 2 * n_faces - 1;
+  const unsigned int n_faces = scene.n_faces;
 
   BVHNode* d_bvh = nullptr;
   unsigned int* d_morton_codes = nullptr;
-  unsigned int* d_indices = nullptr;
+  unsigned int* d_cluster_ids = nullptr;
   unsigned int* d_parents = nullptr;
-  unsigned int* d_flags = nullptr;
+  unsigned int* d_n_clusters = nullptr;
 
-  CUDA_SAFE_CALL(cudaMallocAsync(&d_bvh, sizeof(BVHNode) * n_nodes, stream));
+  CUDA_SAFE_CALL(cudaMallocAsync(&d_bvh, sizeof(BVHNode) * (2 * n_faces - 1), stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_morton_codes, sizeof(unsigned int) * n_faces, stream));
-  CUDA_SAFE_CALL(cudaMallocAsync(&d_indices, sizeof(unsigned int) * n_faces, stream));
-  CUDA_SAFE_CALL(cudaMallocAsync(&d_parents, sizeof(int) * n_nodes, stream));
-  CUDA_SAFE_CALL(cudaMallocAsync(&d_flags, sizeof(unsigned int) * (n_faces - 1), stream));
+  CUDA_SAFE_CALL(cudaMallocAsync(&d_cluster_ids, sizeof(unsigned int) * (2 * n_faces - 1), stream));
+  CUDA_SAFE_CALL(cudaMallocAsync(&d_parents, sizeof(unsigned int) * (2 * n_faces - 1), stream));
+  CUDA_SAFE_CALL(cudaMallocAsync(&d_n_clusters, sizeof(unsigned int), stream));
   CUDA_SYNC_STREAM(stream);
 
   std::vector<double> build_times;
   for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
     timer bvh_build_t;
 
-    cuda::my_lbvh::build(
-        stream,
-        scene_gpu.aabb,
-        scene_gpu.d_faces,
-        scene_gpu.d_vertices,
-        d_bvh,
-        d_morton_codes,
-        d_indices,
-        d_parents,
-        d_flags,
-        n_faces);
+    cuda::hploc::build(stream, scene.aabb, scene.d_faces, scene.d_vertices, d_bvh, d_parents, d_morton_codes, d_cluster_ids, d_n_clusters, n_faces);
     CUDA_SYNC_STREAM(stream);
 
     if (iter >= WARMUP_ITERS) {
@@ -61,7 +50,12 @@ RayTracingResult run_my_gpu_lbvh(cudaStream_t stream, const cuda::Scene& scene_g
   double build_mtris = n_faces * 1e-6f / stats::median(build_times);
   std::cout << EXPERIMENT_NAME " build times (in seconds) - " << stats::valuesStatsLine(build_times) << std::endl;
   std::cout << EXPERIMENT_NAME " build performance: " << build_mtris << " MTris/s" << std::endl;
-  report_sah(stream, d_bvh, n_nodes);
+  unsigned int n_nodes = INVALID_INDEX;
+  CUDA_SAFE_CALL(cudaMemcpyAsync(&n_nodes, d_n_clusters, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
+  CUDA_SYNC_STREAM(stream);
+  std::cout << "Total nodes: " << n_nodes << std::endl;
+  curassert(0 < n_nodes && n_nodes < 2 * n_faces, 541056);
+  report_sah_hploc(stream, d_bvh, n_nodes, n_faces);
 
   fb.clear();
 
@@ -69,18 +63,7 @@ RayTracingResult run_my_gpu_lbvh(cudaStream_t stream, const cuda::Scene& scene_g
   for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
     timer ray_tracing_t;
 
-    cuda::rt_lbvh(
-        stream,
-        width,
-        height,
-        scene_gpu.d_vertices,
-        scene_gpu.d_faces,
-        d_bvh,
-        d_indices,
-        fb.d_face_id,
-        fb.d_ao,
-        scene_gpu.d_camera,
-        scene_gpu.n_faces);
+    cuda::rt_hploc(stream, width, height, scene.d_vertices, scene.d_faces, d_bvh, fb.d_face_id, fb.d_ao, scene.d_camera, scene.n_faces);
     CUDA_SYNC_STREAM(stream);
 
     if (iter >= WARMUP_ITERS) {
@@ -95,13 +78,13 @@ RayTracingResult run_my_gpu_lbvh(cudaStream_t stream, const cuda::Scene& scene_g
 
   auto res = RayTracingResult();
   fb.readback(res.face_ids, res.ao);
-  save_framebuffers(results_dir, "with_gpu_lbvh", res.face_ids, res.ao);
+  save_framebuffers(results_dir, "with_" EXPERIMENT_NAME, res.face_ids, res.ao);
 
   CUDA_SAFE_CALL(cudaFreeAsync(d_bvh, stream));
   CUDA_SAFE_CALL(cudaFreeAsync(d_morton_codes, stream));
-  CUDA_SAFE_CALL(cudaFreeAsync(d_indices, stream));
+  CUDA_SAFE_CALL(cudaFreeAsync(d_cluster_ids, stream));
   CUDA_SAFE_CALL(cudaFreeAsync(d_parents, stream));
-  CUDA_SAFE_CALL(cudaFreeAsync(d_flags, stream));
+  CUDA_SAFE_CALL(cudaFreeAsync(d_n_clusters, stream));
   CUDA_SYNC_STREAM(stream);
 
   return res;

@@ -2,8 +2,8 @@
 
 #include "libimages/images.h"
 
-#define WARMUP_ITERS 2
-#define BENCHMARK_ITERS 2
+#define WARMUP_ITERS 0
+#define BENCHMARK_ITERS 1
 
 struct RayTracingResult {
   image32i face_ids;

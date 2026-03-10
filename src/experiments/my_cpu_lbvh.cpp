@@ -58,7 +58,7 @@ RayTracingResult run_cpu_lbvh(
   for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
     timer ray_tracing_t;
 
-    cuda::ray_tracing_render_using_bvh(
+    cuda::rt_lbvh(
         stream,
         width,
         height,

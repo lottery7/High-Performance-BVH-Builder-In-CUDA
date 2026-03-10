@@ -143,7 +143,7 @@ __device__ inline void make_basis(const float3& n, float3& t, float3& b)
   b = cross_f3(n, t);
 }
 
-__global__ void ray_tracing_render_using_bvh_kernel(
+__global__ void rt_lbvh_kernel(
     const float* vertices,
     const unsigned int* faces,
     const BVHNode* bvh_nodes,
@@ -229,7 +229,7 @@ __global__ void ray_tracing_render_using_bvh_kernel(
 
 namespace cuda
 {
-  void ray_tracing_render_using_bvh(
+  void rt_lbvh(
       cudaStream_t stream,
       unsigned int width,
       unsigned int height,
@@ -242,7 +242,7 @@ namespace cuda
       CameraView* camera,
       unsigned int n_faces)
   {
-    ray_tracing_render_using_bvh_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
+    rt_lbvh_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         vertices,
         faces,
         bvh_nodes,
