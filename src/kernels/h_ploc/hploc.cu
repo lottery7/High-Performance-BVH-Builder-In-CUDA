@@ -29,7 +29,7 @@ __device__ __forceinline__ static unsigned int find_parent_id(
     unsigned int left,
     unsigned int right)
 {
-  if (left == 0 || (right != n_faces - 1 && lcp(morton_codes, n_faces, right, right + 1) < lcp(morton_codes, n_faces, left - 1, left))) return right;
+  if (left == 0 || (right != n_faces - 1 && lcp(morton_codes, n_faces, right, right + 1) > lcp(morton_codes, n_faces, left - 1, left))) return right;
   return left - 1;
 }
 
@@ -129,7 +129,6 @@ __device__ static unsigned int find_nearest_neighbor(unsigned int warp_n_cluster
 {
   curassert(warp_n_clusters <= WARP_SIZE, 81387392);
   unsigned int lane_id = get_lane_id();
-  unsigned int active_mask = __ballot_sync(ALL_THREADS, lane_id < warp_n_clusters);
 
   // TODO uint2 в оригинале - возможно быстрее за счет сравнения интов вместо флоатов
   float min_area = FLT_MAX;
@@ -141,7 +140,7 @@ __device__ static unsigned int find_nearest_neighbor(unsigned int warp_n_cluster
     // === Поиск вправо (+ r)
     unsigned int neighbor_lane_id = lane_id + r;
     // Обновляем минимум у lane_id
-    AABB neighbor_aabb = shfl_down_sync(active_mask, cluster_aabb, r);
+    AABB neighbor_aabb = shfl_down_sync(ALL_THREADS, cluster_aabb, r);
     float union_area = FLT_MAX;  // Площадь поверхности объединения текущего и соседнего кластеров (lane_id U [lane_id + r])
     if (neighbor_lane_id < warp_n_clusters) {
       union_area = AABB::union_of(cluster_aabb, neighbor_aabb).surface_area();
@@ -155,15 +154,15 @@ __device__ static unsigned int find_nearest_neighbor(unsigned int warp_n_cluster
     // === Поиск влево (- r)
     // Обновляем минимум у lane_id + r (мы для него - lane_id - r)
     // Текущий минимум у lane_id + r
-    float neighbor_min_area = __shfl_down_sync(active_mask, min_area, r);
-    unsigned int neighbor_nn_lane_id = __shfl_down_sync(active_mask, nn_lane_id, r);
+    float neighbor_min_area = __shfl_down_sync(ALL_THREADS, min_area, r);
+    unsigned int neighbor_nn_lane_id = __shfl_down_sync(ALL_THREADS, nn_lane_id, r);
     if (neighbor_lane_id < warp_n_clusters && union_area < neighbor_min_area) {
       neighbor_min_area = union_area;
       neighbor_nn_lane_id = lane_id;
     }
     // Тут в lane_id + r мы получаем минимум из lane_id, по сути передаем обновленный минимум в lane_id + r
-    float left_neighbor_min_area = __shfl_up_sync(active_mask, neighbor_min_area, r);
-    unsigned int left_neighbor_nn_lane_id = __shfl_up_sync(active_mask, neighbor_nn_lane_id, r);
+    float left_neighbor_min_area = __shfl_up_sync(ALL_THREADS, neighbor_min_area, r);
+    unsigned int left_neighbor_nn_lane_id = __shfl_up_sync(ALL_THREADS, neighbor_nn_lane_id, r);
     if (lane_id < warp_n_clusters && lane_id >= r) {
       min_area = left_neighbor_min_area;
       nn_lane_id = left_neighbor_nn_lane_id;
@@ -213,7 +212,7 @@ __device__ static void ploc_merge(
     warp_n_clusters = merge_clusters_create_bvh2_node(warp_n_clusters, nn_lane_id, cluster_id, cluster_aabb, n_clusters, nodes);
   }
 
-  if (lane_id < warp_n_clusters) cluster_ids[l_start + lane_id] = cluster_id;
+  if (lane_id < n_left_clusters + n_right_clusters) cluster_ids[l_start + lane_id] = cluster_id;
   __threadfence();  // для остальных ворпов
 }
 

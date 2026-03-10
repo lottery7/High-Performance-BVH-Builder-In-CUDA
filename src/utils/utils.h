@@ -177,7 +177,7 @@ inline void report_sah_hploc(const std::vector<BVHNode>& hploc_nodes, unsigned i
     }
   }
 
-  curassert(n_faces != 0u, 445526);
+  curassert(n_faces == 0u, 445526);
 
   constexpr float C_trav = 2;   // NOLINT(*-identifier-naming)
   constexpr float C_isect = 3;  // NOLINT(*-identifier-naming)

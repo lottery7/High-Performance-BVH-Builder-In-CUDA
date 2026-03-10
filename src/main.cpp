@@ -69,13 +69,13 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path)
   // }
 
   // My implementation of LBVH
-  // {
-  //   auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir);
-  //   if (ground_truth)
-  //     validate_against_ground_truth(*ground_truth, res, width, height);
-  //   else
-  //     ground_truth = res;
-  // }
+  {
+    auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir);
+    if (ground_truth)
+      validate_against_ground_truth(*ground_truth, res, width, height);
+    else
+      ground_truth = res;
+  }
 
   // Kitten LBVH (works VERY bad on large scenes)
   // {
@@ -103,7 +103,7 @@ static void run(int argc, char** argv)
   CUDA_SAFE_CALL(cudaStreamCreate(&stream));
 
   std::vector<std::string> scenes = {
-      "data/gnome/gnome.ply",
+      // // "data/gnome/gnome.ply",
       // "data/hairball/hairball.obj",
       // "data/powerplant/powerplant.obj",
       // "data/san-miguel/san-miguel.obj",
