@@ -18,6 +18,7 @@ set(SOURCES
         src/experiments/my_gpu_lbvh.cpp
         src/experiments/kitten_lbvh.cpp
         src/experiments/hploc.cpp
+        src/experiments/hploc_bvh8.cpp
 )
 
 set(CUDA_SOURCES
@@ -26,6 +27,7 @@ set(CUDA_SOURCES
         src/kernels/helpers/random_helpers.cu
         src/kernels/ray_tracing/rt_lbvh.cu
         src/kernels/ray_tracing/rt_hploc.cu
+        src/kernels/ray_tracing/rt_hploc_wide.cu
         src/kernels/helpers/fill.cu
         src/kernels/helpers/fill_indices.cu
         src/kernels/helpers/sort_by_key.cu
@@ -33,6 +35,7 @@ set(CUDA_SOURCES
         src/kernels/kitten_utils/convert_to_bvh_nodes.cu
         src/kernels/my_lbvh/my_lbvh.cu
         src/kernels/h_ploc/hploc.cu
+        src/kernels/h_ploc/wide_bvh_converter.cu
         src/kernels/helpers/compute_motron_codes.cu
 )
 

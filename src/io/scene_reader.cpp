@@ -210,21 +210,6 @@ SceneGeometry load_obj(const std::string& path)
 namespace ply_detail
 {
 
-  // Map PLY scalar type to byte size
-  static inline size_t type_size(const std::string& t)
-  {
-    if (t == "char" || t == "int8") return 1;
-    if (t == "uchar" || t == "uint8") return 1;
-    if (t == "short" || t == "int16") return 2;
-    if (t == "ushort" || t == "uint16") return 2;
-    if (t == "int" || t == "int32") return 4;
-    if (t == "uint" || t == "uint32") return 4;
-    if (t == "float" || t == "float32") return 4;
-    if (t == "double" || t == "float64") return 8;
-    rassert(false, 2101, t);
-    return 0;
-  }
-
   // Read little-endian value of type T and fix endianness on big-endian hosts
   template <class T>
   static inline T read_le(std::istream& is)
@@ -399,6 +384,11 @@ SceneGeometry load_ply(const std::string& path)
   SceneGeometry scene;
   scene.vertices.resize(static_cast<size_t>(vertexCount));
   scene.faces.reserve(static_cast<size_t>(faceCount));
+  const auto find_face_list_idx = [&] {
+    for (size_t i = 0; i < fprops.size(); ++i)
+      if (fprops[i].isList && (fprops[i].name == "vertex_indices" || fprops[i].name == "vertex_index")) return int(i);
+    return -1;
+  };
 
   if (isAscii) {
     // ASCII vertices
@@ -419,9 +409,7 @@ SceneGeometry load_ply(const std::string& path)
     }
 
     // Identify face indices list
-    int faceListIdx = -1;
-    for (size_t i = 0; i < fprops.size(); ++i)
-      if (fprops[i].isList && (fprops[i].name == "vertex_indices" || fprops[i].name == "vertex_index")) faceListIdx = int(i);
+    const int faceListIdx = find_face_list_idx();
     rassert(faceListIdx >= 0, 3202, "no vertex_indices list");
 
     // ASCII faces
@@ -470,9 +458,7 @@ SceneGeometry load_ply(const std::string& path)
     }
 
     // Binary faces: consume properties in declared order
-    int faceListIdx = -1;
-    for (size_t i = 0; i < fprops.size(); ++i)
-      if (fprops[i].isList && (fprops[i].name == "vertex_indices" || fprops[i].name == "vertex_index")) faceListIdx = int(i);
+    const int faceListIdx = find_face_list_idx();
     rassert(faceListIdx >= 0, 3302, "no vertex_indices list");
 
     for (uint64_t i = 0; i < faceCount; ++i) {

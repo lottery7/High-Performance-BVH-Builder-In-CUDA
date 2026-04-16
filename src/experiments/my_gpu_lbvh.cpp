@@ -1,16 +1,10 @@
 #include "my_gpu_lbvh.h"
 
-#include <libbase/stats.h>
-#include <thrust/sort.h>
-
-#include <filesystem>
-
 #include "../kernels/my_lbvh/my_lbvh.h"
 #include "../kernels/structs/framebuffers.h"
 #include "../kernels/structs/scene.h"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
-#include "libbase/timer.h"
 
 #define EXPERIMENT_NAME "My GPU LBVH"
 
@@ -36,10 +30,7 @@ RayTracingResult run_my_gpu_lbvh(cudaStream_t stream, const cuda::Scene& scene_g
   CUDA_SAFE_CALL(cudaMallocAsync(&d_flags, sizeof(unsigned int) * (n_faces - 1), stream));
   CUDA_SYNC_STREAM(stream);
 
-  std::vector<double> build_times;
-  for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
-    timer bvh_build_t;
-
+  const auto build_times = experiment_stats::benchmark_samples([&] {
     cuda::my_lbvh::build(
         stream,
         scene_gpu.aabb,
@@ -52,23 +43,13 @@ RayTracingResult run_my_gpu_lbvh(cudaStream_t stream, const cuda::Scene& scene_g
         d_flags,
         n_faces);
     CUDA_SYNC_STREAM(stream);
-
-    if (iter >= WARMUP_ITERS) {
-      build_times.push_back(bvh_build_t.elapsed());
-    }
-  }
-
-  double build_mtris = n_faces * 1e-6f / stats::median(build_times);
-  std::cout << EXPERIMENT_NAME " build times (in seconds) - " << stats::valuesStatsLine(build_times) << std::endl;
-  std::cout << EXPERIMENT_NAME " build performance: " << build_mtris << " MTris/s" << std::endl;
+  });
+  experiment_stats::print_phase_stats(EXPERIMENT_NAME " build", build_times, n_faces, "MTris/s");
   report_sah(stream, d_bvh, n_nodes);
 
   fb.clear();
 
-  std::vector<double> rt_times;
-  for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
-    timer ray_tracing_t;
-
+  const auto rt_times = experiment_stats::benchmark_samples([&] {
     cuda::rt_lbvh(
         stream,
         width,
@@ -82,16 +63,9 @@ RayTracingResult run_my_gpu_lbvh(cudaStream_t stream, const cuda::Scene& scene_g
         scene_gpu.d_camera,
         scene_gpu.n_faces);
     CUDA_SYNC_STREAM(stream);
-
-    if (iter >= WARMUP_ITERS) {
-      rt_times.push_back(ray_tracing_t.elapsed());
-    }
-  }
-
-  double mrays = width * height * AO_SAMPLES * 1e-6f / stats::median(rt_times);
-  std::cout << EXPERIMENT_NAME " ray tracing frame render times (in seconds) - " << stats::valuesStatsLine(rt_times) << std::endl;
-  std::cout << EXPERIMENT_NAME " ray tracing performance: " << mrays << " MRays/s" << std::endl;
-  std::cout << EXPERIMENT_NAME " total frame time: " << stats::median(build_times) + stats::median(rt_times) << " seconds" << std::endl;
+  });
+  experiment_stats::print_phase_stats(EXPERIMENT_NAME " ray tracing frame render", rt_times, width * height * AO_SAMPLES, "MRays/s");
+  experiment_stats::print_total_time_stats(EXPERIMENT_NAME " total frame time", build_times, rt_times);
 
   auto res = RayTracingResult();
   fb.readback(res.face_ids, res.ao);

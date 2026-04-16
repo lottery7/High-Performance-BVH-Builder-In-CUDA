@@ -7,6 +7,7 @@
 #include "structs/bvh_node.h"
 #include "structs/camera.h"
 #include "structs/morton_code.h"
+#include "structs/wide_bvh_node.h"
 
 namespace cuda
 {
@@ -37,6 +38,17 @@ namespace cuda
       float* ambient_occlusion,
       CameraView* camera,
       unsigned int n_faces);
+
+  void rt_hploc_wide(
+      cudaStream_t stream,
+      unsigned int width,
+      unsigned int height,
+      const float* vertices,
+      const unsigned int* faces,
+      const WideBVHNode* bvh_nodes,
+      int* face_id,
+      float* ambient_occlusion,
+      CameraView* camera);
 
   void fill_indices(cudaStream_t stream, unsigned int* d_indices, unsigned int n);
 

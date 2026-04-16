@@ -1,3 +1,7 @@
+#include <cuda_runtime.h>
+
+#include <cstdint>
+
 // simple fast RNG (stateful LCG)
 __device__ __forceinline__ float random01(uint32_t& s)
 {

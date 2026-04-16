@@ -2,6 +2,8 @@
 
 #include <cuda_runtime.h>
 
+#include <cmath>
+
 struct AABB {
   // Minimum corner of the box
   float min_x;

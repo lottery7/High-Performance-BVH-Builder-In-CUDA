@@ -11,6 +11,7 @@
 #include "libbase/string_utils.h"
 #include "libimages/debug_io.h"
 #include "libimages/images.h"
+#include "../kernels/structs/wide_bvh_node.h"
 
 #define CUDA_SAFE_CALL(expr) cuda::report_error(expr, __LINE__)
 #define CUDA_SYNC_STREAM(expr) cuda::report_error(cudaStreamSynchronize(expr), __LINE__)
@@ -201,4 +202,29 @@ inline void report_sah_hploc(cudaStream_t stream, const BVHNode* d_bvh, unsigned
   CUDA_SAFE_CALL(cudaMemcpyAsync(h_nodes.data(), d_bvh, sizeof(BVHNode) * n_nodes, cudaMemcpyDeviceToHost, stream));
   CUDA_SYNC_STREAM(stream);
   report_sah_hploc(h_nodes, n_faces);
+}
+
+inline void report_sah_wide(const std::vector<WideBVHNode>& wide_nodes)
+{
+  constexpr float C_trav = 2;
+  constexpr float C_isect = 3;
+
+  float sah = 0.0f;
+  for (const WideBVHNode& node : wide_nodes) {
+    for (unsigned int slot = 0; slot < 8; ++slot) {
+      if (((node.valid_mask >> slot) & 1u) == 0u) continue;
+      sah += (((node.internal_mask >> slot) & 1u) != 0u ? C_trav : C_isect) * node.child_aabbs[slot].surface_area();
+    }
+  }
+  sah /= wide_nodes[0].aabb.surface_area();
+
+  std::cout << "SAH = " << sah << " (C_trav=" << C_trav << ", C_isect=" << C_isect << ")" << std::endl;
+}
+
+inline void report_sah_wide(cudaStream_t stream, const WideBVHNode* d_bvh, unsigned int n_nodes)
+{
+  std::vector<WideBVHNode> h_nodes(n_nodes);
+  CUDA_SAFE_CALL(cudaMemcpyAsync(h_nodes.data(), d_bvh, sizeof(WideBVHNode) * n_nodes, cudaMemcpyDeviceToHost, stream));
+  CUDA_SYNC_STREAM(stream);
+  report_sah_wide(h_nodes);
 }

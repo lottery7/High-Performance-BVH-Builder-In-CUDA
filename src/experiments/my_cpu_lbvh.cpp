@@ -1,13 +1,6 @@
-#pragma once
-
 #include "my_cpu_lbvh.h"
 
 #include <cuda_runtime_api.h>
-#include <libbase/stats.h>
-#include <libbase/timer.h>
-
-#include <filesystem>
-#include <iostream>
 
 #include "../io/scene_reader.h"
 #include "../kernels/kernels.h"
@@ -37,10 +30,8 @@ RayTracingResult run_cpu_lbvh(
 
   timer cpu_lbvh_t;
   buildLBVH_CPU(scene.vertices, scene.faces, h_nodes, h_indices);
-  double build_time = cpu_lbvh_t.elapsed();
-
-  std::cout << EXPERIMENT_NAME " build took " << build_time << " seconds" << std::endl;
-  std::cout << EXPERIMENT_NAME " build performance: " << n_faces * 1e-6f / build_time << " MTris/s" << std::endl;
+  const auto build_times = experiment_stats::single_sample(cpu_lbvh_t.elapsed());
+  experiment_stats::print_phase_stats(EXPERIMENT_NAME " build", build_times, n_faces, "MTris/s");
   report_sah(h_nodes);
 
   BVHNode* d_lbvh_nodes = nullptr;
@@ -54,10 +45,7 @@ RayTracingResult run_cpu_lbvh(
 
   fb.clear();
 
-  std::vector<double> rt_times;
-  for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
-    timer ray_tracing_t;
-
+  const auto rt_times = experiment_stats::benchmark_samples([&] {
     cuda::rt_lbvh(
         stream,
         width,
@@ -71,16 +59,9 @@ RayTracingResult run_cpu_lbvh(
         scene_gpu.d_camera,
         scene_gpu.n_faces);
     CUDA_SYNC_STREAM(stream);
-
-    if (iter >= WARMUP_ITERS) {
-      rt_times.push_back(ray_tracing_t.elapsed());
-    }
-  }
-
-  double mrays = width * height * AO_SAMPLES * 1e-6f / stats::median(rt_times);
-  std::cout << EXPERIMENT_NAME " ray tracing frame render times (in seconds) - " << stats::valuesStatsLine(rt_times) << std::endl;
-  std::cout << EXPERIMENT_NAME " ray tracing performance: " << mrays << " MRays/s" << std::endl;
-  std::cout << EXPERIMENT_NAME " total frame time: " << build_time + stats::median(rt_times) << " seconds" << std::endl;
+  });
+  experiment_stats::print_phase_stats(EXPERIMENT_NAME " ray tracing frame render", rt_times, width * height * AO_SAMPLES, "MRays/s");
+  experiment_stats::print_total_time_stats(EXPERIMENT_NAME " total frame time", build_times, rt_times);
 
   RayTracingResult result;
   fb.readback(result.face_ids, result.ao);
