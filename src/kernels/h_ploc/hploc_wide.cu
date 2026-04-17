@@ -6,7 +6,7 @@
 #include "../../utils/utils.h"
 #include "hploc_wide.h"
 
-constexpr unsigned long long INVALID_TASK = ~0ull;
+#define INVALID_TASK (~0ull)
 
 __host__ __device__ __forceinline__ unsigned long long pack_task(unsigned int binary_node_index, unsigned int wide_node_index)
 {
