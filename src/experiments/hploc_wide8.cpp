@@ -31,7 +31,7 @@ RayTracingResult run_hploc_wide8(cudaStream_t stream, const cuda::Scene& scene, 
   unsigned int* d_n_binary_nodes = nullptr;
 
   WideBVHNode8* d_wide_bvh = nullptr;
-  std::uint64_t* d_tasks = nullptr;
+  uint64_t* d_tasks = nullptr;
   unsigned int* d_next_task = nullptr;
   unsigned int* d_next_wide_node = nullptr;
   unsigned int* d_block_counter = nullptr;
@@ -43,7 +43,7 @@ RayTracingResult run_hploc_wide8(cudaStream_t stream, const cuda::Scene& scene, 
   CUDA_SAFE_CALL(cudaMallocAsync(&d_n_binary_nodes, sizeof(unsigned int), stream));
 
   CUDA_SAFE_CALL(cudaMallocAsync(&d_wide_bvh, sizeof(WideBVHNode8) * max_binary_nodes, stream));
-  CUDA_SAFE_CALL(cudaMallocAsync(&d_tasks, sizeof(std::uint64_t) * n_faces, stream));
+  CUDA_SAFE_CALL(cudaMallocAsync(&d_tasks, sizeof(uint64_t) * n_faces, stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_next_task, sizeof(unsigned int), stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_next_wide_node, sizeof(unsigned int), stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_block_counter, sizeof(unsigned int), stream));
