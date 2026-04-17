@@ -1,7 +1,6 @@
 #include "hploc.h"
 
 #include <libbase/stats.h>
-#include <thrust/sort.h>
 
 #include <filesystem>
 

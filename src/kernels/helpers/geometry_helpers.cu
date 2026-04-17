@@ -21,6 +21,12 @@ namespace
     return {v.x * inv, v.y * inv, v.z * inv};
   }
   __device__ inline float length_f3(const float3 &v) { return sqrtf(v.x * v.x + v.y * v.y + v.z * v.z); }
+  __device__ inline void make_basis(const float3 &n, float3 &t, float3 &b)
+  {
+    float3 up = (fabsf(n.z) < 0.999f) ? make_float3(0.f, 0.f, 1.f) : make_float3(0.f, 1.f, 0.f);
+    t = normalize_f3(cross_f3(up, n));
+    b = cross_f3(n, t);
+  }
 
   // dot/cross for float3
   static __device__ __forceinline__ float dot3(const float3 a, const float3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }

@@ -1,5 +1,3 @@
-#pragma once
-
 #include "my_cpu_lbvh.h"
 
 #include <cuda_runtime_api.h>

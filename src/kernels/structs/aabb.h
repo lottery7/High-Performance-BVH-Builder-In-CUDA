@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cuda_runtime.h>
 
 struct AABB {

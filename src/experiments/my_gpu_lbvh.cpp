@@ -1,7 +1,6 @@
 #include "my_gpu_lbvh.h"
 
 #include <libbase/stats.h>
-#include <thrust/sort.h>
 
 #include <filesystem>
 

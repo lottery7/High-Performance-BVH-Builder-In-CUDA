@@ -1,6 +1,7 @@
 #include "camera_reader.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <fstream>
 #include <iomanip>
 #include <sstream>

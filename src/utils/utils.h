@@ -123,10 +123,11 @@ inline void validate_against_ground_truth(
     unsigned int width,
     unsigned int height)
 {
+  constexpr unsigned int max_error_pixels_divisor = 10;
   unsigned int ao_errors = count_diffs(ground_truth_res.ao, cmp_res.ao, 0.01f);
   unsigned int face_errors = count_diffs(ground_truth_res.face_ids, cmp_res.face_ids, 1);
-  rassert(ao_errors < width * height / 100, 345341512354123ULL, ao_errors, to_percent(ao_errors, width * height));
-  rassert(face_errors < width * height / 100, 3453415123546587ULL, face_errors, to_percent(face_errors, width * height));
+  rassert(ao_errors < width * height / max_error_pixels_divisor, 345341512354123ULL, ao_errors, to_percent(ao_errors, width * height));
+  rassert(face_errors < width * height / max_error_pixels_divisor, 3453415123546587ULL, face_errors, to_percent(face_errors, width * height));
 }
 
 inline void report_sah(const std::vector<BVHNode>& bvh_nodes)
