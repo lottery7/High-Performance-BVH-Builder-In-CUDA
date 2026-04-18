@@ -51,22 +51,17 @@ __global__ void convert_to_wide_kernel(
     unsigned long long* tasks,
     unsigned int* next_task,
     unsigned int* next_wide_node,
-    unsigned int* block_counter,
     unsigned int n_faces)
 {
-  __shared__ unsigned int logical_block_index;
-  if (threadIdx.x == 0) logical_block_index = atomicAdd(block_counter, 1u);
-  __syncthreads();
-
-  const unsigned int task_slot = logical_block_index * blockDim.x + threadIdx.x;
-  if (task_slot >= n_faces) return;
+  const unsigned int task_id = blockIdx.x * blockDim.x + threadIdx.x;
+  if (task_id >= n_faces) return;
 
   auto* volatile_tasks = reinterpret_cast<volatile unsigned long long*>(tasks);
 
   // Busy waiting тасок воркерами
   unsigned long long task = INVALID_TASK;
   while (task == INVALID_TASK) {
-    task = volatile_tasks[task_slot];
+    task = volatile_tasks[task_id];
   }
 
   // Одну из тасок передаем сами себе для экономии
@@ -90,6 +85,7 @@ __global__ void convert_to_wide_kernel(
     wide_node.aabb = binary_node.aabb;
     initialize_wide_node(wide_node);
 
+    // Ищем своих детей: расширяем бинарную ноду, записываем индексы во frontier
     unsigned int frontier[Arity];
     frontier[0] = binary_node.left_child_index;
     frontier[1] = binary_node.right_child_index;
@@ -109,37 +105,35 @@ __global__ void convert_to_wide_kernel(
       if (binary_nodes[frontier[i]].left_child_index != INVALID_INDEX) ++n_internal_children;
     }
 
+    // Аллоцируем место под n_internal_children новых широких нод
     const unsigned int child_base_index = atomicAdd(next_wide_node, n_internal_children);
     wide_node.valid_mask = (1u << frontier_size) - 1u;
 
+    const unsigned int new_tasks_start = atomicAdd(next_task, frontier_size - 1u);
     unsigned int next_internal_offset = 0;
-    unsigned long long next_frontier_tasks[Arity];
+
     for (unsigned int i = 0; i < frontier_size; ++i) {
       const BVHNode& child = binary_nodes[frontier[i]];
       wide_node.child_aabbs[i] = child.aabb;
+      unsigned long long new_task = INVALID_TASK;
+
       if (child.is_leaf()) {
         wide_node.primitive_mask |= 1u << i;
         wide_node.child_indices[i] = child.right_child_index;
-        next_frontier_tasks[i] = pack_task(frontier[i], INVALID_INDEX);
-        continue;
+        new_task = pack_task(frontier[i], INVALID_INDEX);
+      } else {
+        wide_node.child_indices[i] = child_base_index + next_internal_offset++;
+        new_task = pack_task(frontier[i], wide_node.child_indices[i]);
       }
 
-      wide_node.child_indices[i] = child_base_index + next_internal_offset++;
-      next_frontier_tasks[i] = pack_task(frontier[i], wide_node.child_indices[i]);
+      if (i == 0) {
+        task = new_task;
+      } else {
+        atomicExch(&tasks[new_tasks_start + i - 1], new_task);
+      }
     }
-
+    __threadfence();
     wide_nodes[wide_node_index] = wide_node;
-
-    if (frontier_size > 1) {
-      const unsigned int appended_base = atomicAdd(next_task, frontier_size - 1u);
-      for (unsigned int i = 1; i < frontier_size; ++i) {
-        atomicExch(&tasks[appended_base + i - 1u], next_frontier_tasks[i]);
-      }
-      __threadfence();
-    }
-
-    task = next_frontier_tasks[0];
-    volatile_tasks[task_slot] = task;
   }
 }
 
@@ -153,7 +147,6 @@ namespace cuda::hploc
       unsigned long long* d_tasks,
       unsigned int* d_next_task,
       unsigned int* d_next_wide_node,
-      unsigned int* d_block_counter,
       unsigned int n_faces)
   {
     rassert(n_faces > 1, 61824857);
@@ -161,13 +154,11 @@ namespace cuda::hploc
     const unsigned int root_index = 2 * n_faces - 2;
     const unsigned long long root_task = pack_task(root_index, 0);
     const unsigned int one = 1;
-    const unsigned int zero = 0;
 
     CUDA_SAFE_CALL(cudaMemsetAsync(d_tasks, 0xFF, sizeof(unsigned long long) * n_faces, stream));
     CUDA_SAFE_CALL(cudaMemcpyAsync(d_tasks, &root_task, sizeof(root_task), cudaMemcpyHostToDevice, stream));
     CUDA_SAFE_CALL(cudaMemcpyAsync(d_next_task, &one, sizeof(one), cudaMemcpyHostToDevice, stream));
     CUDA_SAFE_CALL(cudaMemcpyAsync(d_next_wide_node, &one, sizeof(one), cudaMemcpyHostToDevice, stream));
-    CUDA_SAFE_CALL(cudaMemcpyAsync(d_block_counter, &zero, sizeof(zero), cudaMemcpyHostToDevice, stream));
 
     convert_to_wide_kernel<Arity><<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(
         d_binary_nodes,
@@ -175,7 +166,6 @@ namespace cuda::hploc
         reinterpret_cast<unsigned long long*>(d_tasks),
         d_next_task,
         d_next_wide_node,
-        d_block_counter,
         n_faces);
   }
 
@@ -186,7 +176,6 @@ namespace cuda::hploc
       unsigned long long* d_tasks,
       unsigned int* d_next_task,
       unsigned int* d_next_wide_node,
-      unsigned int* d_block_counter,
       unsigned int n_faces);
 
   template void convert_to_wide<8>(
@@ -196,6 +185,5 @@ namespace cuda::hploc
       unsigned long long* d_tasks,
       unsigned int* d_next_task,
       unsigned int* d_next_wide_node,
-      unsigned int* d_block_counter,
       unsigned int n_faces);
 }  // namespace cuda::hploc

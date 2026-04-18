@@ -36,7 +36,6 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
   unsigned long long* d_tasks = nullptr;
   unsigned int* d_next_task = nullptr;
   unsigned int* d_next_wide_node = nullptr;
-  unsigned int* d_block_counter = nullptr;
 
   CUDA_SAFE_CALL(cudaMallocAsync(&d_binary_bvh, sizeof(BVHNode) * max_binary_nodes, stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_morton_codes, sizeof(unsigned int) * n_faces, stream));
@@ -48,7 +47,6 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
   CUDA_SAFE_CALL(cudaMallocAsync(&d_tasks, sizeof(unsigned long long) * n_faces, stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_next_task, sizeof(unsigned int), stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_next_wide_node, sizeof(unsigned int), stream));
-  CUDA_SAFE_CALL(cudaMallocAsync(&d_block_counter, sizeof(unsigned int), stream));
   CUDA_SYNC_STREAM(stream);
 
   std::vector<double> bvh2_build_times;
@@ -73,7 +71,7 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
     const double bvh2_time = bvh2_build_t.elapsed();
 
     timer conversion_t;
-    cuda::hploc::convert_to_wide<Arity>(stream, d_binary_bvh, d_wide_bvh, d_tasks, d_next_task, d_next_wide_node, d_block_counter, n_faces);
+    cuda::hploc::convert_to_wide<Arity>(stream, d_binary_bvh, d_wide_bvh, d_tasks, d_next_task, d_next_wide_node, n_faces);
     CUDA_SYNC_STREAM(stream);
     const double conversion_time = conversion_t.elapsed();
     const double total_build_time = total_build_t.elapsed();
@@ -129,7 +127,6 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
   CUDA_SAFE_CALL(cudaFreeAsync(d_tasks, stream));
   CUDA_SAFE_CALL(cudaFreeAsync(d_next_task, stream));
   CUDA_SAFE_CALL(cudaFreeAsync(d_next_wide_node, stream));
-  CUDA_SAFE_CALL(cudaFreeAsync(d_block_counter, stream));
   CUDA_SYNC_STREAM(stream);
 
   return res;

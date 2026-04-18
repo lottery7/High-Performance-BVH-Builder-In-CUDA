@@ -123,7 +123,7 @@ inline void validate_against_ground_truth(
     unsigned int width,
     unsigned int height)
 {
-  constexpr double max_errors_percents = 10.0;
+  constexpr double max_errors_percents = 3.0;
   unsigned int ao_errors = count_diffs(ground_truth_res.ao, cmp_res.ao, 0.01f);
   unsigned int face_errors = count_diffs(ground_truth_res.face_ids, cmp_res.face_ids, 1);
   rassert(ao_errors < width * height / 100 * max_errors_percents, 345341512354123ULL, ao_errors, to_percent(ao_errors, width * height));
