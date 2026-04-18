@@ -7,6 +7,7 @@
 
 #include "experiments/common.h"
 #include "experiments/hploc.h"
+#include "experiments/hploc_wide.h"
 #include "experiments/kitten_lbvh.h"
 #include "experiments/my_cpu_lbvh.h"
 #include "experiments/my_gpu_lbvh.h"
@@ -69,13 +70,13 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path)
   // }
 
   // My implementation of LBVH
-  {
-    auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir);
-    if (ground_truth)
-      validate_against_ground_truth(*ground_truth, res, width, height);
-    else
-      ground_truth = res;
-  }
+  // {
+  //   auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir);
+  //   if (ground_truth)
+  //     validate_against_ground_truth(*ground_truth, res, width, height);
+  //   else
+  //     ground_truth = res;
+  // }
 
   // Kitten LBVH (works VERY bad on large scenes)
   // {
@@ -94,6 +95,24 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path)
     else
       ground_truth = res;
   }
+
+  // H-PLOC + conversion to BVH4
+  {
+    auto res = run_hploc_wide<4>(stream, scene_gpu, fb, results_dir);
+    if (ground_truth)
+      validate_against_ground_truth(*ground_truth, res, width, height);
+    else
+      ground_truth = res;
+  }
+
+  // H-PLOC + conversion to BVH8
+  {
+    auto res = run_hploc_wide<8>(stream, scene_gpu, fb, results_dir);
+    if (ground_truth)
+      validate_against_ground_truth(*ground_truth, res, width, height);
+    else
+      ground_truth = res;
+  }
 }
 
 static void run(int argc, char** argv)
@@ -102,12 +121,20 @@ static void run(int argc, char** argv)
   cudaStream_t stream;
   CUDA_SAFE_CALL(cudaStreamCreate(&stream));
 
-  std::vector<std::string> scenes = {
-      // // "data/gnome/gnome.ply",
-      // "data/hairball/hairball.obj",
-      // "data/powerplant/powerplant.obj",
-      // "data/san-miguel/san-miguel.obj",
-  };
+  std::vector<std::string> scenes;
+  for (int i = 1; i < argc; ++i) {
+    scenes.push_back(argv[i]);
+  }
+
+  if (scenes.empty()) {
+    scenes = {
+        // "data/gnome/gnome.ply",
+        "data/hairball/hairball.obj",
+        // "data/powerplant/powerplant.obj",
+        // "data/san-miguel/san-miguel.obj",
+    };
+  }
+
   std::cout << "Using " << AO_SAMPLES << " ray samples for ambient occlusion" << std::endl;
 
   for (const std::string& scene_path : scenes) {

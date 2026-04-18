@@ -13,79 +13,76 @@ __device__ bool closest_hit(
     const float3& orig,
     const float3& dir,
     const BVHNode* nodes,
-    unsigned int nfaces,
+    unsigned int n_faces,
     const float* vertices,
     const unsigned int* faces,
-    float tMin,
-    float& outT,
-    int& outFaceId,
-    float& outU,
-    float& outV)
+    float t_min,
+    float& out_t,
+    int& out_face_id,
+    float& out_u,
+    float& out_v)
 {
-  const int rootIndex = (int)(2u * nfaces - 2u);
+  const int root_index = static_cast<int>(2u * n_faces - 2u);
 
-  float bestT = FLT_MAX;
+  float best_t = FLT_MAX;
   bool hit = false;
 
   int stack[BVH_STACK_SIZE];
   int sp = 0;
-  stack[sp++] = rootIndex;
+  stack[sp++] = root_index;
 
   while (sp > 0) {
-    const int nodeIdx = stack[--sp];
-    const BVHNode& node = nodes[nodeIdx];
+    const int node_idx = stack[--sp];
+    const BVHNode& node = nodes[node_idx];
 
-    float tNear, tFar;
-    if (!intersect_ray_aabb(orig, dir, node.aabb, tMin, bestT, tNear, tFar)) continue;
+    float t_near, t_far;
+    if (!intersect_ray_aabb(orig, dir, node.aabb, t_min, best_t, t_near, t_far)) continue;
 
-    // leaf
-    if (node.left_child_index == INVALID_INDEX) {
-      const unsigned int triIdx = node.right_child_index;  // ВАЖНО: как ты описал
+    if (node.is_leaf()) {
+      const unsigned int tri_idx = node.right_child_index;
 
-      const uint3 face = loadFace(faces, triIdx);
+      const uint3 face = loadFace(faces, tri_idx);
       const float3 v0 = loadVertex(vertices, face.x);
       const float3 v1 = loadVertex(vertices, face.y);
       const float3 v2 = loadVertex(vertices, face.z);
 
       float t, u, v;
-      if (intersect_ray_triangle(orig, dir, v0, v1, v2, tMin, bestT, false, t, u, v)) {
+      if (intersect_ray_triangle(orig, dir, v0, v1, v2, t_min, best_t, false, t, u, v)) {
         hit = true;
-        bestT = t;
-        outT = t;
-        outFaceId = (int)triIdx;
-        outU = u;
-        outV = v;
+        best_t = t;
+        out_t = t;
+        out_face_id = static_cast<int>(tri_idx);
+        out_u = u;
+        out_v = v;
       }
       continue;
     }
 
-    // internal: near-first (push far first, then near)
-    const int leftIdx = (int)node.left_child_index;
-    const int rightIdx = (int)node.right_child_index;
+    const int left_idx = static_cast<int>(node.left_child_index);
+    const int right_idx = static_cast<int>(node.right_child_index);
 
-    // если есть шанс на невалидные индексы
-    if (leftIdx == (int)INVALID_INDEX || rightIdx == (int)INVALID_INDEX) continue;
+    if (left_idx == static_cast<int>(INVALID_INDEX) || right_idx == static_cast<int>(INVALID_INDEX)) continue;
 
-    float tNearL, tFarL, tNearR, tFarR;
-    const bool hitL = intersect_ray_aabb(orig, dir, nodes[leftIdx].aabb, tMin, bestT, tNearL, tFarL);
-    const bool hitR = intersect_ray_aabb(orig, dir, nodes[rightIdx].aabb, tMin, bestT, tNearR, tFarR);
+    float t_near_l, t_far_l, t_near_r, t_far_r;
+    const bool hit_l = intersect_ray_aabb(orig, dir, nodes[left_idx].aabb, t_min, best_t, t_near_l, t_far_l);
+    const bool hit_r = intersect_ray_aabb(orig, dir, nodes[right_idx].aabb, t_min, best_t, t_near_r, t_far_r);
 
-    if (!hitL && !hitR) continue;
+    if (!hit_l && !hit_r) continue;
 
     curassert(sp + 2 < BVH_STACK_SIZE, 465130814);
 
-    if (hitL && hitR) {
-      if (tNearL <= tNearR) {
-        stack[sp++] = rightIdx;  // far
-        stack[sp++] = leftIdx;   // near
+    if (hit_l && hit_r) {
+      if (t_near_l <= t_near_r) {
+        stack[sp++] = right_idx;
+        stack[sp++] = left_idx;
       } else {
-        stack[sp++] = leftIdx;
-        stack[sp++] = rightIdx;
+        stack[sp++] = left_idx;
+        stack[sp++] = right_idx;
       }
-    } else if (hitL) {
-      stack[sp++] = leftIdx;
-    } else {  // hitR
-      stack[sp++] = rightIdx;
+    } else if (hit_l) {
+      stack[sp++] = left_idx;
+    } else {
+      stack[sp++] = right_idx;
     }
   }
 
@@ -99,80 +96,69 @@ __device__ bool any_hit_from(
     const float* vertices,
     const unsigned int* faces,
     const BVHNode* nodes,
-    unsigned int nfaces,
+    unsigned int n_faces,
     int ignore_face)
 {
-  const int rootIndex = (int)(2u * nfaces - 2u);
+  const int root_index = static_cast<int>(2u * n_faces - 2u);
 
-  const float tMin = 1e-4f;
-  float bestT = FLT_MAX;
+  const float t_min = 1e-4f;
+  float best_t = FLT_MAX;
 
   int stack[BVH_STACK_SIZE];
   int sp = 0;
-  stack[sp++] = rootIndex;
+  stack[sp++] = root_index;
 
   while (sp > 0) {
-    const int nodeIdx = stack[--sp];
-    const BVHNode& node = nodes[nodeIdx];
+    const int node_idx = stack[--sp];
+    const BVHNode& node = nodes[node_idx];
 
-    float tNear, tFar;
-    if (!intersect_ray_aabb(orig, dir, node.aabb, tMin, bestT, tNear, tFar)) continue;
+    float t_near, t_far;
+    if (!intersect_ray_aabb(orig, dir, node.aabb, t_min, best_t, t_near, t_far)) continue;
 
-    // leaf
-    if (node.left_child_index == INVALID_INDEX) {
-      const unsigned int triIdx = node.right_child_index;
-      if ((int)triIdx == ignore_face) continue;
+    if (node.is_leaf()) {
+      const unsigned int tri_idx = node.right_child_index;
+      if (static_cast<int>(tri_idx) == ignore_face) continue;
 
-      const uint3 face = loadFace(faces, triIdx);
+      const uint3 face = loadFace(faces, tri_idx);
       const float3 v0 = loadVertex(vertices, face.x);
       const float3 v1 = loadVertex(vertices, face.y);
       const float3 v2 = loadVertex(vertices, face.z);
 
       float t, u, v;
-      if (intersect_ray_triangle(orig, dir, v0, v1, v2, tMin, bestT, false, t, u, v)) {
+      if (intersect_ray_triangle(orig, dir, v0, v1, v2, t_min, best_t, false, t, u, v)) {
         return true;
       }
       continue;
     }
 
-    // internal: near-first
-    const int leftIdx = (int)node.left_child_index;
-    const int rightIdx = (int)node.right_child_index;
-    if (leftIdx == (int)INVALID_INDEX || rightIdx == (int)INVALID_INDEX) continue;
+    const int left_idx = static_cast<int>(node.left_child_index);
+    const int right_idx = static_cast<int>(node.right_child_index);
+    if (left_idx == static_cast<int>(INVALID_INDEX) || right_idx == static_cast<int>(INVALID_INDEX)) continue;
 
-    float tNearL, tFarL, tNearR, tFarR;
-    const bool hitL = intersect_ray_aabb(orig, dir, nodes[leftIdx].aabb, tMin, bestT, tNearL, tFarL);
-    const bool hitR = intersect_ray_aabb(orig, dir, nodes[rightIdx].aabb, tMin, bestT, tNearR, tFarR);
+    float t_near_l, t_far_l, t_near_r, t_far_r;
+    const bool hit_l = intersect_ray_aabb(orig, dir, nodes[left_idx].aabb, t_min, best_t, t_near_l, t_far_l);
+    const bool hit_r = intersect_ray_aabb(orig, dir, nodes[right_idx].aabb, t_min, best_t, t_near_r, t_far_r);
 
-    if (!hitL && !hitR) continue;
+    if (!hit_l && !hit_r) continue;
 
     curassert(sp + 2 < BVH_STACK_SIZE, 136015328);
 
-    if (hitL && hitR) {
-      if (tNearL <= tNearR) {
-        stack[sp++] = rightIdx;
-        stack[sp++] = leftIdx;
+    if (hit_l && hit_r) {
+      if (t_near_l <= t_near_r) {
+        stack[sp++] = right_idx;
+        stack[sp++] = left_idx;
       } else {
-        stack[sp++] = leftIdx;
-        stack[sp++] = rightIdx;
+        stack[sp++] = left_idx;
+        stack[sp++] = right_idx;
       }
-    } else if (hitL) {
-      stack[sp++] = leftIdx;
+    } else if (hit_l) {
+      stack[sp++] = left_idx;
     } else {
-      stack[sp++] = rightIdx;
+      stack[sp++] = right_idx;
     }
   }
 
   return false;
-}
-
-// + helper: build tangent basis for a given normal
-__device__ inline void make_basis(const float3& n, float3& t, float3& b)
-{
-  // pick a non-parallel vector
-  float3 up = (fabsf(n.z) < 0.999f) ? make_float3(0.f, 0.f, 1.f) : make_float3(0.f, 1.f, 0.f);
-  t = normalize_f3(cross_f3(up, n));
-  b = cross_f3(n, t);
 }
 
 __global__ void rt_hploc_kernel(
@@ -181,7 +167,7 @@ __global__ void rt_hploc_kernel(
     const BVHNode* bvh_nodes,
     int* face_id,
     float* ambient_occlusion,
-    CameraView* camera,
+    const CameraView* camera,
     unsigned int n_faces)
 {
   const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -193,21 +179,18 @@ __global__ void rt_hploc_kernel(
   float3 ray_origin, ray_direction;
   make_primary_ray(*camera, i + 0.5f, j + 0.5f, ray_origin, ray_direction);
 
-  float tMin = 1e-6f;
-  float tBest = FLT_MAX;
-  float uBest = 0, vBest = 0;
-  int faceIdBest = -1;
+  float t_best = FLT_MAX;
+  float u_best = 0, v_best = 0;
+  int face_id_best = -1;
 
-  // Use BVH traversal instead of brute-force loop
-  closest_hit(ray_origin, ray_direction, bvh_nodes, n_faces, vertices, faces, tMin, tBest, faceIdBest, uBest, vBest);
-  ;
+  closest_hit(ray_origin, ray_direction, bvh_nodes, n_faces, vertices, faces, 1e-6f, t_best, face_id_best, u_best, v_best);
 
   const unsigned int idx = j * camera->K.width + i;
-  face_id[idx] = faceIdBest;
+  face_id[idx] = face_id_best;
 
-  float ao = 1.0f;  // background stays white
-  if (faceIdBest >= 0) {
-    uint3 f = loadFace(faces, faceIdBest);
+  float ao = 1.0f;
+  if (face_id_best >= 0) {
+    uint3 f = loadFace(faces, face_id_best);
     float3 a = loadVertex(vertices, f.x);
     float3 b = loadVertex(vertices, f.y);
     float3 c = loadVertex(vertices, f.z);
@@ -216,45 +199,40 @@ __global__ void rt_hploc_kernel(
     float3 e2 = {c.x - a.x, c.y - a.y, c.z - a.z};
     float3 n = normalize_f3(cross_f3(e1, e2));
 
-    // ensure hemisphere is "outside" relative to the camera ray
     if (n.x * ray_direction.x + n.y * ray_direction.y + n.z * ray_direction.z > 0.0f) n = make_float3(-n.x, -n.y, -n.z);
 
-    float3 P = {ray_origin.x + tBest * ray_direction.x, ray_origin.y + tBest * ray_direction.y, ray_origin.z + tBest * ray_direction.z};
+    float3 hit_point = {ray_origin.x + t_best * ray_direction.x, ray_origin.y + t_best * ray_direction.y, ray_origin.z + t_best * ray_direction.z};
 
     float scale = fmaxf(fmaxf(length_f3(e1), length_f3(e2)), length_f3(make_float3(c.x - a.x, c.y - a.y, c.z - a.z)));
     float eps = 1e-3f * fmaxf(1.0f, scale);
-    float3 Po = {P.x + n.x * eps, P.y + n.y * eps, P.z + n.z * eps};
+    float3 offset_origin = {hit_point.x + n.x * eps, hit_point.y + n.y * eps, hit_point.z + n.z * eps};
 
-    // build tangent basis
-    float3 T, B;
-    make_basis(n, T, B);
-    // per-pixel seed (stable)
+    float3 tangent, bitangent;
+    make_basis(n, tangent, bitangent);
     union {
       float f32;
       uint32_t u32;
-    } tBestUnion;
-    tBestUnion.f32 = tBest;
-    uint32_t rng = 0x9E3779B9u ^ idx ^ tBestUnion.u32;
+    } t_best_union;
+    t_best_union.f32 = t_best;
+    uint32_t rng = 0x9E3779B9u ^ idx ^ t_best_union.u32;
 
     int hits = 0;
     for (int s = 0; s < AO_SAMPLES; ++s) {
-      // uniform hemisphere sampling (solid angle)
       float u1 = random01(rng);
       float u2 = random01(rng);
-      float z = u1;                     // z in [0,1]
-      float phi = 6.28318530718f * u2;  // 2*pi*u2
+      float z = u1;
+      float phi = 6.28318530718f * u2;
       float r = sqrtf(fmaxf(0.f, 1.f - z * z));
       float3 d_local = make_float3(r * cosf(phi), r * sinf(phi), z);
 
-      // transform to world space
       float3 d = make_float3(
-          T.x * d_local.x + B.x * d_local.y + n.x * d_local.z,
-          T.y * d_local.x + B.y * d_local.y + n.y * d_local.z,
-          T.z * d_local.x + B.z * d_local.y + n.z * d_local.z);
+          tangent.x * d_local.x + bitangent.x * d_local.y + n.x * d_local.z,
+          tangent.y * d_local.x + bitangent.y * d_local.y + n.y * d_local.z,
+          tangent.z * d_local.x + bitangent.z * d_local.y + n.z * d_local.z);
 
-      if (any_hit_from(Po, d, vertices, faces, bvh_nodes, n_faces, faceIdBest)) ++hits;
+      if (any_hit_from(offset_origin, d, vertices, faces, bvh_nodes, n_faces, face_id_best)) ++hits;
     }
-    ao = 1.0f - (float)hits / (float)AO_SAMPLES;  // [0,1]
+    ao = 1.0f - static_cast<float>(hits) / static_cast<float>(AO_SAMPLES);
   }
   ambient_occlusion[idx] = ao;
 }
@@ -270,7 +248,7 @@ namespace cuda
       const BVHNode* bvh_nodes,
       int* face_id,
       float* ambient_occlusion,
-      CameraView* camera,
+      const CameraView* camera,
       unsigned int n_faces)
   {
     rt_hploc_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(

@@ -86,8 +86,8 @@ __global__ void convert_to_bvh_nodes_kernel(
     bvh_nodes[idx].aabb = convert_bound(kitten_leaf_aabbs[triIdx]);
 
     // Дочерних нет — можно оставить как -1 (или не трогать, рендерер не читает)
-    bvh_nodes[idx].left_child_index = -1;
-    bvh_nodes[idx].right_child_index = -1;
+    bvh_nodes[idx].left_child_index = INVALID_INDEX;
+    bvh_nodes[idx].right_child_index = INVALID_INDEX;
 
     // Записываем соответствие: лист leafIdx → треугольник triIdx
     leaf_tri_indices[leafIdx] = triIdx;

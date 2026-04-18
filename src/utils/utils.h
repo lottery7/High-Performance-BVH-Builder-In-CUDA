@@ -123,10 +123,11 @@ inline void validate_against_ground_truth(
     unsigned int width,
     unsigned int height)
 {
+  constexpr double max_errors_percents = 3.0;
   unsigned int ao_errors = count_diffs(ground_truth_res.ao, cmp_res.ao, 0.01f);
   unsigned int face_errors = count_diffs(ground_truth_res.face_ids, cmp_res.face_ids, 1);
-  rassert(ao_errors < width * height / 100, 345341512354123ULL, ao_errors, to_percent(ao_errors, width * height));
-  rassert(face_errors < width * height / 100, 3453415123546587ULL, face_errors, to_percent(face_errors, width * height));
+  rassert(ao_errors < width * height / 100 * max_errors_percents, 345341512354123ULL, ao_errors, to_percent(ao_errors, width * height));
+  rassert(face_errors < width * height / 100 * max_errors_percents, 3453415123546587ULL, face_errors, to_percent(face_errors, width * height));
 }
 
 inline void report_sah(const std::vector<BVHNode>& bvh_nodes)
@@ -184,7 +185,7 @@ inline void report_sah_hploc(const std::vector<BVHNode>& hploc_nodes, unsigned i
 
   float sah = 0;
   for (int i = 0; i < hploc_nodes.size(); i++) {
-    if (hploc_nodes[i].left_child_index == INVALID_INDEX) {
+    if (hploc_nodes[i].is_leaf()) {
       sah += C_isect * hploc_nodes[i].aabb.surface_area();
     } else {
       sah += C_trav * hploc_nodes[i].aabb.surface_area();

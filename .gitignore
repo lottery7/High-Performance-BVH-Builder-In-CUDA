@@ -1,5 +1,8 @@
 **/*_cl.h
 **/generated_kernels/*
+**/._*
+AGENTS.md
+.DS_Store
 .idea
 build*
 data**

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 project(HighPerformanceBVHBuilderInCUDA LANGUAGES CXX CUDA)
 
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -18,6 +20,7 @@ set(SOURCES
         src/experiments/my_gpu_lbvh.cpp
         src/experiments/kitten_lbvh.cpp
         src/experiments/hploc.cpp
+        src/experiments/hploc_wide.cpp
 )
 
 set(CUDA_SOURCES
@@ -26,6 +29,7 @@ set(CUDA_SOURCES
         src/kernels/helpers/random_helpers.cu
         src/kernels/ray_tracing/rt_lbvh.cu
         src/kernels/ray_tracing/rt_hploc.cu
+        src/kernels/ray_tracing/rt_hploc_wide.cu
         src/kernels/helpers/fill.cu
         src/kernels/helpers/fill_indices.cu
         src/kernels/helpers/sort_by_key.cu
@@ -33,6 +37,7 @@ set(CUDA_SOURCES
         src/kernels/kitten_utils/convert_to_bvh_nodes.cu
         src/kernels/my_lbvh/my_lbvh.cu
         src/kernels/h_ploc/hploc.cu
+        src/kernels/h_ploc/hploc_wide.cu
         src/kernels/helpers/compute_motron_codes.cu
 )
 
@@ -76,6 +81,8 @@ target_link_libraries(${PROJECT_NAME}_core
         CUDA::cudart
 )
 
+target_include_directories(${PROJECT_NAME}_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 if (OpenMP_CXX_FOUND)
     target_link_libraries(${PROJECT_NAME}_core PUBLIC OpenMP::OpenMP_CXX)
 else ()
@@ -89,3 +96,8 @@ endif ()
 # ---- Executable ----
 add_executable(run_experiments src/main.cpp)
 target_link_libraries(run_experiments PRIVATE ${PROJECT_NAME}_core)
+
+add_executable(hploc_topology_tests src/hploc_topology_tests.cpp)
+target_link_libraries(hploc_topology_tests PRIVATE ${PROJECT_NAME}_core)
+
+add_test(NAME hploc_topology_tests COMMAND hploc_topology_tests)
