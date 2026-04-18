@@ -187,19 +187,17 @@ namespace
     unsigned long long* d_tasks = nullptr;
     unsigned int* d_next_task = nullptr;
     unsigned int* d_next_wide_node = nullptr;
-    unsigned int* d_block_counter = nullptr;
 
     TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_binary_nodes), sizeof(BVHNode) * max_nodes));
     TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_wide_nodes), sizeof(WideBVHNode<Arity>) * max_nodes));
     TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_tasks), sizeof(unsigned long long) * n_faces));
     TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_next_task), sizeof(unsigned int)));
     TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_next_wide_node), sizeof(unsigned int)));
-    TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_block_counter), sizeof(unsigned int)));
 
     try {
       TEST_CUDA(cudaMemcpyAsync(d_binary_nodes, binary_nodes.data(), sizeof(BVHNode) * max_nodes, cudaMemcpyHostToDevice, stream));
 
-      cuda::hploc::convert_to_wide<Arity>(stream, d_binary_nodes, d_wide_nodes, d_tasks, d_next_task, d_next_wide_node, d_block_counter, n_faces);
+      cuda::hploc::convert_to_wide<Arity>(stream, d_binary_nodes, d_wide_nodes, d_tasks, d_next_task, d_next_wide_node, n_faces);
       TEST_CUDA(cudaGetLastError());
       TEST_CUDA(cudaStreamSynchronize(stream));
 
@@ -215,7 +213,6 @@ namespace
       TEST_CUDA(cudaFree(d_tasks));
       TEST_CUDA(cudaFree(d_next_task));
       TEST_CUDA(cudaFree(d_next_wide_node));
-      TEST_CUDA(cudaFree(d_block_counter));
       return wide_nodes;
     } catch (...) {
       cudaFree(d_binary_nodes);
@@ -223,7 +220,6 @@ namespace
       cudaFree(d_tasks);
       cudaFree(d_next_task);
       cudaFree(d_next_wide_node);
-      cudaFree(d_block_counter);
       throw;
     }
   }
