@@ -8,11 +8,11 @@
 #include "../kernels.h"
 #include "../structs/camera.h"
 
-template <unsigned int arity>
+template <unsigned int Arity>
 static __device__ bool wide_closest_hit(
       const float3& orig,
       const float3& dir,
-      const WideBVHNode<arity>* nodes,
+      const WideBVHNode<Arity>* nodes,
       const float* vertices,
       const unsigned int* faces,
       float t_min,
@@ -24,20 +24,20 @@ static __device__ bool wide_closest_hit(
   float best_t = FLT_MAX;
   bool hit = false;
 
-  constexpr int stack_capacity = BVH_STACK_SIZE * static_cast<int>(arity);
+  constexpr int stack_capacity = BVH_STACK_SIZE * static_cast<int>(Arity);
   int stack[stack_capacity];
   int sp = 0;
   stack[sp++] = 0;
 
   while (sp > 0) {
     const int node_idx = stack[--sp];
-    const WideBVHNode<arity>& node = nodes[node_idx];
+    const WideBVHNode<Arity>& node = nodes[node_idx];
 
-    unsigned int hit_indices[arity];
-    float hit_t_near[arity];
+    unsigned int hit_indices[Arity];
+    float hit_t_near[Arity];
     unsigned int hit_count = 0;
 
-    for (unsigned int slot = 0; slot < arity; ++slot) {
+    for (unsigned int slot = 0; slot < Arity; ++slot) {
       if ((node.valid_mask & (1u << slot)) == 0u) continue;
 
       float t_near, t_far;
@@ -82,16 +82,16 @@ static __device__ bool wide_closest_hit(
   return hit;
 }
 
-template <unsigned int arity>
+template <unsigned int Arity>
 static __device__ bool wide_any_hit_from(
       const float3& orig,
       const float3& dir,
       const float* vertices,
       const unsigned int* faces,
-      const WideBVHNode<arity>* nodes,
+      const WideBVHNode<Arity>* nodes,
       int ignore_face)
 {
-  constexpr int stack_capacity = BVH_STACK_SIZE * static_cast<int>(arity);
+  constexpr int stack_capacity = BVH_STACK_SIZE * static_cast<int>(Arity);
   int stack[stack_capacity];
   int sp = 0;
   stack[sp++] = 0;
@@ -101,13 +101,13 @@ static __device__ bool wide_any_hit_from(
 
   while (sp > 0) {
     const int node_idx = stack[--sp];
-    const WideBVHNode<arity>& node = nodes[node_idx];
+    const WideBVHNode<Arity>& node = nodes[node_idx];
 
-    unsigned int hit_indices[arity];
-    float hit_t_near[arity];
+    unsigned int hit_indices[Arity];
+    float hit_t_near[Arity];
     unsigned int hit_count = 0;
 
-    for (unsigned int slot = 0; slot < arity; ++slot) {
+    for (unsigned int slot = 0; slot < Arity; ++slot) {
       if ((node.valid_mask & (1u << slot)) == 0u) continue;
 
       float t_near, t_far;
@@ -147,11 +147,11 @@ static __device__ bool wide_any_hit_from(
   return false;
 }
 
-template <unsigned int arity>
+template <unsigned int Arity>
 static __global__ void rt_hploc_wide_kernel(
       const float* vertices,
       const unsigned int* faces,
-      const WideBVHNode<arity>* bvh_nodes,
+      const WideBVHNode<Arity>* bvh_nodes,
       int* face_id,
       float* ambient_occlusion,
       const CameraView* camera)

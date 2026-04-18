@@ -185,7 +185,7 @@ inline void report_sah_hploc(const std::vector<BVHNode>& hploc_nodes, unsigned i
 
   float sah = 0;
   for (int i = 0; i < hploc_nodes.size(); i++) {
-    if (hploc_nodes[i].left_child_index == INVALID_INDEX) {
+    if (hploc_nodes[i].is_leaf()) {
       sah += C_isect * hploc_nodes[i].aabb.surface_area();
     } else {
       sah += C_trav * hploc_nodes[i].aabb.surface_area();

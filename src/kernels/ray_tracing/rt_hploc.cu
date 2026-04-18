@@ -38,7 +38,7 @@ __device__ bool closest_hit(
     float t_near, t_far;
     if (!intersect_ray_aabb(orig, dir, node.aabb, t_min, best_t, t_near, t_far)) continue;
 
-    if (node.left_child_index == INVALID_INDEX) {
+    if (node.is_leaf()) {
       const unsigned int tri_idx = node.right_child_index;
 
       const uint3 face = loadFace(faces, tri_idx);
@@ -115,7 +115,7 @@ __device__ bool any_hit_from(
     float t_near, t_far;
     if (!intersect_ray_aabb(orig, dir, node.aabb, t_min, best_t, t_near, t_far)) continue;
 
-    if (node.left_child_index == INVALID_INDEX) {
+    if (node.is_leaf()) {
       const unsigned int tri_idx = node.right_child_index;
       if (static_cast<int>(tri_idx) == ignore_face) continue;
 

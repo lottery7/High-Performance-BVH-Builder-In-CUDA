@@ -1,8 +1,7 @@
-#include "hploc_wide8.h"
+#include "hploc_wide.h"
 
 #include <libbase/stats.h>
 
-#include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -15,9 +14,12 @@
 #include "../utils/utils.h"
 #include "libbase/timer.h"
 
-RayTracingResult run_hploc_wide8(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
+template <unsigned int Arity>
+RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
 {
-  std::cout << "\n=== Experiment: H-PLOC-Wide8" << std::endl;
+  const std::string experiment_name = "H-PLOC BVH" + std::to_string(Arity);
+
+  std::cout << "\n=== Experiment: " << experiment_name << std::endl;
 
   const unsigned int width = fb.width;
   const unsigned int height = fb.height;
@@ -30,8 +32,8 @@ RayTracingResult run_hploc_wide8(cudaStream_t stream, const cuda::Scene& scene, 
   unsigned int* d_parents = nullptr;
   unsigned int* d_n_binary_nodes = nullptr;
 
-  WideBVHNode8* d_wide_bvh = nullptr;
-  uint64_t* d_tasks = nullptr;
+  WideBVHNode<Arity>* d_wide_bvh = nullptr;
+  unsigned long long* d_tasks = nullptr;
   unsigned int* d_next_task = nullptr;
   unsigned int* d_next_wide_node = nullptr;
   unsigned int* d_block_counter = nullptr;
@@ -42,8 +44,8 @@ RayTracingResult run_hploc_wide8(cudaStream_t stream, const cuda::Scene& scene, 
   CUDA_SAFE_CALL(cudaMallocAsync(&d_parents, sizeof(unsigned int) * max_binary_nodes, stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_n_binary_nodes, sizeof(unsigned int), stream));
 
-  CUDA_SAFE_CALL(cudaMallocAsync(&d_wide_bvh, sizeof(WideBVHNode8) * max_binary_nodes, stream));
-  CUDA_SAFE_CALL(cudaMallocAsync(&d_tasks, sizeof(uint64_t) * n_faces, stream));
+  CUDA_SAFE_CALL(cudaMallocAsync(&d_wide_bvh, sizeof(WideBVHNode<Arity>) * max_binary_nodes, stream));
+  CUDA_SAFE_CALL(cudaMallocAsync(&d_tasks, sizeof(unsigned long long) * n_faces, stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_next_task, sizeof(unsigned int), stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_next_wide_node, sizeof(unsigned int), stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_block_counter, sizeof(unsigned int), stream));
@@ -71,7 +73,7 @@ RayTracingResult run_hploc_wide8(cudaStream_t stream, const cuda::Scene& scene, 
     const double bvh2_time = bvh2_build_t.elapsed();
 
     timer conversion_t;
-    cuda::hploc::convert_to_wide<8>(stream, d_binary_bvh, d_wide_bvh, d_tasks, d_next_task, d_next_wide_node, d_block_counter, n_faces);
+    cuda::hploc::convert_to_wide<Arity>(stream, d_binary_bvh, d_wide_bvh, d_tasks, d_next_task, d_next_wide_node, d_block_counter, n_faces);
     CUDA_SYNC_STREAM(stream);
     const double conversion_time = conversion_t.elapsed();
     const double total_build_time = total_build_t.elapsed();
@@ -84,10 +86,10 @@ RayTracingResult run_hploc_wide8(cudaStream_t stream, const cuda::Scene& scene, 
   }
 
   const double build_mtris = n_faces * 1e-6f / stats::median(total_build_times);
-  std::cout << "H-PLOC-Wide8 BVH2 build times (in seconds) - " << stats::valuesStatsLine(bvh2_build_times) << std::endl;
-  std::cout << "H-PLOC-Wide8 conversion times (in seconds) - " << stats::valuesStatsLine(conversion_times) << std::endl;
-  std::cout << "H-PLOC-Wide8 total build times (in seconds) - " << stats::valuesStatsLine(total_build_times) << std::endl;
-  std::cout << "H-PLOC-Wide8 total build performance: " << build_mtris << " MTris/s" << std::endl;
+  std::cout << experiment_name << " BVH2 build times (in seconds) - " << stats::valuesStatsLine(bvh2_build_times) << std::endl;
+  std::cout << experiment_name << " conversion times (in seconds) - " << stats::valuesStatsLine(conversion_times) << std::endl;
+  std::cout << experiment_name << " total build times (in seconds) - " << stats::valuesStatsLine(total_build_times) << std::endl;
+  std::cout << experiment_name << " total build performance: " << build_mtris << " MTris/s" << std::endl;
 
   unsigned int n_wide_nodes = INVALID_INDEX;
   CUDA_SAFE_CALL(cudaMemcpyAsync(&n_wide_nodes, d_next_wide_node, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
@@ -101,7 +103,7 @@ RayTracingResult run_hploc_wide8(cudaStream_t stream, const cuda::Scene& scene, 
   for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
     timer ray_tracing_t;
 
-    cuda::rt_hploc_wide<8>(stream, width, height, scene.d_vertices, scene.d_faces, d_wide_bvh, fb.d_face_id, fb.d_ao, scene.d_camera);
+    cuda::rt_hploc_wide<Arity>(stream, width, height, scene.d_vertices, scene.d_faces, d_wide_bvh, fb.d_face_id, fb.d_ao, scene.d_camera);
     CUDA_SYNC_STREAM(stream);
 
     if (iter >= WARMUP_ITERS) {
@@ -110,13 +112,13 @@ RayTracingResult run_hploc_wide8(cudaStream_t stream, const cuda::Scene& scene, 
   }
 
   const double mrays = width * height * AO_SAMPLES * 1e-6f / stats::median(rt_times);
-  std::cout << "H-PLOC-Wide8 ray tracing frame render times (in seconds) - " << stats::valuesStatsLine(rt_times) << std::endl;
-  std::cout << "H-PLOC-Wide8 ray tracing performance: " << mrays << " MRays/s" << std::endl;
-  std::cout << "H-PLOC-Wide8 total frame time: " << stats::median(total_build_times) + stats::median(rt_times) << " seconds" << std::endl;
+  std::cout << experiment_name << " ray tracing frame render times (in seconds) - " << stats::valuesStatsLine(rt_times) << std::endl;
+  std::cout << experiment_name << " ray tracing performance: " << mrays << " MRays/s" << std::endl;
+  std::cout << experiment_name << " total frame time: " << stats::median(total_build_times) + stats::median(rt_times) << " seconds" << std::endl;
 
   auto res = RayTracingResult();
   fb.readback(res.face_ids, res.ao);
-  save_framebuffers(results_dir, "with_H-PLOC-Wide8", res.face_ids, res.ao);
+  save_framebuffers(results_dir, "with_" + experiment_name, res.face_ids, res.ao);
 
   CUDA_SAFE_CALL(cudaFreeAsync(d_binary_bvh, stream));
   CUDA_SAFE_CALL(cudaFreeAsync(d_morton_codes, stream));
@@ -132,3 +134,6 @@ RayTracingResult run_hploc_wide8(cudaStream_t stream, const cuda::Scene& scene, 
 
   return res;
 }
+
+template RayTracingResult run_hploc_wide<4>(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir);
+template RayTracingResult run_hploc_wide<8>(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir);

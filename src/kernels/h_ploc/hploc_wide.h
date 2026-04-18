@@ -14,7 +14,7 @@ namespace cuda::hploc
       cudaStream_t stream,
       const BVHNode* d_binary_nodes,
       WideBVHNode<Arity>* d_wide_nodes,
-      uint64_t* d_tasks,
+      unsigned long long* d_tasks,
       unsigned int* d_next_task,
       unsigned int* d_next_wide_node,
       unsigned int* d_block_counter,

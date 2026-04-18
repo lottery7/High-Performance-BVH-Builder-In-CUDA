@@ -7,8 +7,7 @@
 
 #include "experiments/common.h"
 #include "experiments/hploc.h"
-#include "experiments/hploc_wide4.h"
-#include "experiments/hploc_wide8.h"
+#include "experiments/hploc_wide.h"
 #include "experiments/kitten_lbvh.h"
 #include "experiments/my_cpu_lbvh.h"
 #include "experiments/my_gpu_lbvh.h"
@@ -71,13 +70,13 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path)
   // }
 
   // My implementation of LBVH
-  {
-    auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir);
-    if (ground_truth)
-      validate_against_ground_truth(*ground_truth, res, width, height);
-    else
-      ground_truth = res;
-  }
+  // {
+  //   auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir);
+  //   if (ground_truth)
+  //     validate_against_ground_truth(*ground_truth, res, width, height);
+  //   else
+  //     ground_truth = res;
+  // }
 
   // Kitten LBVH (works VERY bad on large scenes)
   // {
@@ -97,18 +96,18 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path)
       ground_truth = res;
   }
 
-  // H-PLOC + top-down conversion to BVH4
+  // H-PLOC + conversion to BVH4
   {
-    auto res = run_hploc_wide4(stream, scene_gpu, fb, results_dir);
+    auto res = run_hploc_wide<4>(stream, scene_gpu, fb, results_dir);
     if (ground_truth)
       validate_against_ground_truth(*ground_truth, res, width, height);
     else
       ground_truth = res;
   }
 
-  // H-PLOC + top-down conversion to BVH8
+  // H-PLOC + conversion to BVH8
   {
-    auto res = run_hploc_wide8(stream, scene_gpu, fb, results_dir);
+    auto res = run_hploc_wide<8>(stream, scene_gpu, fb, results_dir);
     if (ground_truth)
       validate_against_ground_truth(*ground_truth, res, width, height);
     else
@@ -131,7 +130,7 @@ static void run(int argc, char** argv)
     scenes = {
         // "data/gnome/gnome.ply",
         "data/hairball/hairball.obj",
-        "data/powerplant/powerplant.obj",
+        // "data/powerplant/powerplant.obj",
         // "data/san-miguel/san-miguel.obj",
     };
   }
