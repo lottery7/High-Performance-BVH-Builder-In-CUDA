@@ -15,8 +15,6 @@
 - [x] **Реализация H-PLOC**  
   Статья: [H-PLOC: Hierarchical Parallel Locally-Ordered Clustering for Bounding Volume Hierarchy Construction, 2024](https://gpuopen.com/download/HPLOC.pdf)
 - [x] **Реализация Binary BVH to Wide BVH Conversion для H-PLOC**
-- [ ] **Реализация Fused Collapsing для H-PLOC**  
-  Статья: [Fused Collapsing for Wide BVH Construction, 2025](https://www.researchgate.net/publication/395662267_Fused_Collapsing_for_Wide_BVH_Construction)
 - [ ] **Сравнение производительности**
 
 ## Датасеты
