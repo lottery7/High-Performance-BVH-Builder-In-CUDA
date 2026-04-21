@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <iostream>
 #include <optional>
+#include <stdexcept>
+#include <utility>
 
 #include "experiments/common.h"
 #include "experiments/hploc.h"
@@ -17,6 +19,146 @@
 #include "kernels/structs/scene.h"
 #include "utils/defines.h"
 #include "utils/utils.h"
+
+namespace
+{
+  constexpr const char* usage_text =
+      "Usage: run_experiments --bench_iters <int> --warmup_iters <int> --experiments <list> --scenes <list> [--device <int>]\n"
+      "  experiments: cpu_lbvh, lbvh, gpu_lbvh, kitten_lbvh, hploc, hploc_bvh4, hploc_bvh8\n"
+      "  examples:\n"
+      "    run_experiments --bench_iters 10 --warmup_iters 10 --experiments hploc,hploc_bvh4,lbvh --scenes data/gnome/gnome.ply,data/powerplant/powerplant.obj\n"
+      "    run_experiments --bench_iters 1 --warmup_iters 0 --experiments hploc_bvh4 --scenes data/hairball/hairball.obj --device 0";
+
+  [[noreturn]] void throw_usage(const std::string& message)
+  {
+    throw std::runtime_error(message + "\n" + usage_text);
+  }
+
+  std::string normalize_experiment_name(std::string name)
+  {
+    name = trimmed(tolower(name));
+    if (name == "gpu_lbvh") return "lbvh";
+    if (name == "hploc_wide4") return "hploc_bvh4";
+    if (name == "hploc_wide8") return "hploc_bvh8";
+    return name;
+  }
+
+  std::vector<std::string> parse_list(const std::string& value)
+  {
+    std::vector<std::string> values;
+    for (const std::string& part : split(value, ",", false)) {
+      const std::string item = trimmed(part);
+      if (!item.empty()) values.push_back(item);
+    }
+    return values;
+  }
+
+  int parse_non_negative_int(const std::string& name, const std::string& value)
+  {
+    try {
+      const int parsed = std::stoi(value);
+      if (parsed < 0) throw_usage("Negative value for " + name + ": " + value);
+      return parsed;
+    } catch (const std::exception&) {
+      throw_usage("Invalid value for " + name + ": " + value);
+    }
+  }
+
+  bool is_option_name(std::string_view value) { return value.size() >= 2 && value[0] == '-' && value[1] == '-'; }
+
+  std::string read_option_value(int argc, char** argv, int& i)
+  {
+    if (i + 1 >= argc || is_option_name(argv[i + 1])) {
+      throw_usage("Missing value for option " + std::string(argv[i]));
+    }
+    return argv[++i];
+  }
+
+  std::string read_list_option_value(int argc, char** argv, int& i)
+  {
+    std::string value;
+    while (i + 1 < argc) {
+      const std::string_view next = argv[i + 1];
+      if (is_option_name(next)) break;
+      if (!value.empty()) value += ' ';
+      value += argv[++i];
+    }
+    if (value.empty()) {
+      throw_usage("Missing value for option " + std::string(argv[i]));
+    }
+    return value;
+  }
+
+  bool has_experiment(const RuntimeConfig& config, const std::string& experiment_name)
+  {
+    return std::find(config.experiments.begin(), config.experiments.end(), experiment_name) != config.experiments.end();
+  }
+
+  template <typename F>
+  void run_experiment_if_enabled(
+      const RuntimeConfig& config,
+      const std::string& experiment_name,
+      std::optional<RayTracingResult>& ground_truth,
+      unsigned int width,
+      unsigned int height,
+      F&& run_experiment)
+  {
+    if (!has_experiment(config, experiment_name)) return;
+
+    auto result = run_experiment();
+    if (ground_truth)
+      validate_against_ground_truth(*ground_truth, result, width, height);
+    else
+      ground_truth = std::move(result);
+  }
+
+  RuntimeConfig parse_runtime_config(int argc, char** argv)
+  {
+    if (argc <= 1) throw_usage("Missing command line arguments");
+
+    RuntimeConfig config;
+    bool has_benchmark_iters = false;
+    bool has_warmup_iters = false;
+    bool has_experiments = false;
+    bool has_scenes = false;
+
+    for (int i = 1; i < argc; ++i) {
+      const std::string arg = argv[i];
+      if (arg == "--help") {
+        throw_usage("Help requested");
+      } else if (arg == "--bench_iters") {
+        config.benchmark_iters = parse_non_negative_int(arg, read_option_value(argc, argv, i));
+        has_benchmark_iters = true;
+      } else if (arg == "--warmup_iters") {
+        config.warmup_iters = parse_non_negative_int(arg, read_option_value(argc, argv, i));
+        has_warmup_iters = true;
+      } else if (arg == "--device") {
+        config.cuda_device = parse_non_negative_int(arg, read_option_value(argc, argv, i));
+      } else if (arg == "--experiments") {
+        config.experiments = parse_list(read_list_option_value(argc, argv, i));
+        for (std::string& experiment_name : config.experiments) {
+          experiment_name = normalize_experiment_name(experiment_name);
+          const bool valid =
+              experiment_name == "cpu_lbvh" || experiment_name == "lbvh" || experiment_name == "kitten_lbvh" || experiment_name == "hploc" ||
+              experiment_name == "hploc_bvh4" || experiment_name == "hploc_bvh8";
+          if (!valid) throw_usage("Unknown experiment: " + experiment_name);
+        }
+        has_experiments = !config.experiments.empty();
+      } else if (arg == "--scenes") {
+        config.scenes = parse_list(read_list_option_value(argc, argv, i));
+        has_scenes = !config.scenes.empty();
+      } else {
+        throw_usage("Unknown option: " + arg);
+      }
+    }
+
+    if (!has_benchmark_iters || !has_warmup_iters || !has_experiments || !has_scenes) {
+      throw_usage("Missing required options");
+    }
+
+    return config;
+  }
+}  // namespace
 
 static void process_scene(cudaStream_t stream, const std::string& scene_path)
 {
@@ -58,86 +200,32 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path)
   std::cout << "Camera framebuffer size: " << width << "x" << height << std::endl;
   std::cout << "Running experiments" << std::endl << std::endl;
 
+  const RuntimeConfig& config = runtime_config_const();
   std::optional<RayTracingResult> ground_truth;
 
-  // CPU LBVH
-  // {
-  //   auto res = run_cpu_lbvh(stream, scene, scene_gpu, fb, results_dir);
-  //   if (ground_truth)
-  //     validate_against_ground_truth(*ground_truth, res, width, height);
-  //   else
-  //     ground_truth = res;
-  // }
+  run_experiment_if_enabled(config, "cpu_lbvh", ground_truth, width, height, [&] { return run_cpu_lbvh(stream, scene, scene_gpu, fb, results_dir); });
 
-  // My implementation of LBVH
-  // {
-  //   auto res = run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir);
-  //   if (ground_truth)
-  //     validate_against_ground_truth(*ground_truth, res, width, height);
-  //   else
-  //     ground_truth = res;
-  // }
+  run_experiment_if_enabled(config, "lbvh", ground_truth, width, height, [&] { return run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir); });
 
-  // Kitten LBVH (works VERY bad on large scenes)
-  // {
-  //   auto res = run_kitten_lbvh(scene_gpu, fb, results_dir);
-  //   if (ground_truth)
-  //     validate_against_ground_truth(*ground_truth, res, width, height);
-  //   else
-  //     ground_truth = res;
-  // }
+  run_experiment_if_enabled(config, "kitten_lbvh", ground_truth, width, height, [&] { return run_kitten_lbvh(scene_gpu, fb, results_dir); });
 
-  // My implementation of H-PLOC
-  {
-    auto res = run_hploc(stream, scene_gpu, fb, results_dir);
-    if (ground_truth)
-      validate_against_ground_truth(*ground_truth, res, width, height);
-    else
-      ground_truth = res;
-  }
+  run_experiment_if_enabled(config, "hploc", ground_truth, width, height, [&] { return run_hploc(stream, scene_gpu, fb, results_dir); });
 
-  // H-PLOC + conversion to BVH4
-  {
-    auto res = run_hploc_wide<4>(stream, scene_gpu, fb, results_dir);
-    if (ground_truth)
-      validate_against_ground_truth(*ground_truth, res, width, height);
-    else
-      ground_truth = res;
-  }
+  run_experiment_if_enabled(config, "hploc_bvh4", ground_truth, width, height, [&] { return run_hploc_wide<4>(stream, scene_gpu, fb, results_dir); });
 
-  // H-PLOC + conversion to BVH8
-  {
-    auto res = run_hploc_wide<8>(stream, scene_gpu, fb, results_dir);
-    if (ground_truth)
-      validate_against_ground_truth(*ground_truth, res, width, height);
-    else
-      ground_truth = res;
-  }
+  run_experiment_if_enabled(config, "hploc_bvh8", ground_truth, width, height, [&] { return run_hploc_wide<8>(stream, scene_gpu, fb, results_dir); });
 }
 
 static void run(int argc, char** argv)
 {
-  cuda::select_cuda_device(argc, argv);
+  runtime_config() = parse_runtime_config(argc, argv);
+  cuda::select_cuda_device(runtime_config_const().cuda_device);
   cudaStream_t stream;
   CUDA_SAFE_CALL(cudaStreamCreate(&stream));
 
-  std::vector<std::string> scenes;
-  for (int i = 1; i < argc; ++i) {
-    scenes.push_back(argv[i]);
-  }
-
-  if (scenes.empty()) {
-    scenes = {
-        // "data/gnome/gnome.ply",
-        "data/hairball/hairball.obj",
-        // "data/powerplant/powerplant.obj",
-        // "data/san-miguel/san-miguel.obj",
-    };
-  }
-
   std::cout << "Using " << AO_SAMPLES << " ray samples for ambient occlusion" << std::endl;
 
-  for (const std::string& scene_path : scenes) {
+  for (const std::string& scene_path : runtime_config_const().scenes) {
     process_scene(stream, scene_path);
   }
 

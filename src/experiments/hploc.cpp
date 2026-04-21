@@ -34,14 +34,17 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
   CUDA_SAFE_CALL(cudaMallocAsync(&d_n_clusters, sizeof(unsigned int), stream));
   CUDA_SYNC_STREAM(stream);
 
+  const int warmup = warmup_iters();
+  const int benchmark = benchmark_iters();
+
   std::vector<double> build_times;
-  for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
+  for (int iter = 0; iter < benchmark + warmup; ++iter) {
     timer bvh_build_t;
 
     cuda::hploc::build(stream, scene.aabb, scene.d_faces, scene.d_vertices, d_bvh, d_parents, d_morton_codes, d_cluster_ids, d_n_clusters, n_faces);
     CUDA_SYNC_STREAM(stream);
 
-    if (iter >= WARMUP_ITERS) {
+    if (iter >= warmup) {
       build_times.push_back(bvh_build_t.elapsed());
     }
   }
@@ -59,13 +62,13 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
   fb.clear();
 
   std::vector<double> rt_times;
-  for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
+  for (int iter = 0; iter < benchmark + warmup; ++iter) {
     timer ray_tracing_t;
 
     cuda::rt_hploc(stream, width, height, scene.d_vertices, scene.d_faces, d_bvh, fb.d_face_id, fb.d_ao, scene.d_camera, scene.n_faces);
     CUDA_SYNC_STREAM(stream);
 
-    if (iter >= WARMUP_ITERS) {
+    if (iter >= warmup) {
       rt_times.push_back(ray_tracing_t.elapsed());
     }
   }

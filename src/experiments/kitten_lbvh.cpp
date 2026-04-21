@@ -30,8 +30,10 @@ RayTracingResult run_kitten_lbvh(const cuda::Scene& scene_gpu, cuda::Framebuffer
   CUDA_SAFE_CALL(cudaMalloc(&d_sorted_indices, sizeof(unsigned int) * n_faces));
 
   Kitten::LBVH lbvh;
+  const int warmup = warmup_iters();
+  const int benchmark = benchmark_iters();
   std::vector<double> build_times;
-  for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
+  for (int iter = 0; iter < benchmark + warmup; ++iter) {
     timer build_timer;  // use host-size timer because Kitten LBVH works with default device stream
 
     cuda::compute_faces_aabb(0, scene_gpu.d_vertices, scene_gpu.d_faces, d_face_bounds, n_faces);
@@ -39,7 +41,7 @@ RayTracingResult run_kitten_lbvh(const cuda::Scene& scene_gpu, cuda::Framebuffer
     cuda::convert_to_bvh_nodes(0, lbvh.internalNodes(), lbvh.objects(), lbvh.objectIds(), d_bvh, d_sorted_indices, n_faces);
     CUDA_SYNC_STREAM(0);
 
-    if (iter >= WARMUP_ITERS) {
+    if (iter >= warmup) {
       build_times.push_back(build_timer.elapsed());
     }
   }
@@ -53,7 +55,7 @@ RayTracingResult run_kitten_lbvh(const cuda::Scene& scene_gpu, cuda::Framebuffer
   fb.clear();
 
   std::vector<double> rt_times;
-  for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
+  for (int iter = 0; iter < benchmark + warmup; ++iter) {
     timer rt_timer;
     cuda::rt_lbvh(
         0,
@@ -68,7 +70,7 @@ RayTracingResult run_kitten_lbvh(const cuda::Scene& scene_gpu, cuda::Framebuffer
         scene_gpu.d_camera,
         scene_gpu.n_faces);
     CUDA_SYNC_STREAM(0);
-    if (iter >= WARMUP_ITERS) {
+    if (iter >= warmup) {
       rt_times.push_back(rt_timer.elapsed());
     }
   }

@@ -53,17 +53,12 @@ namespace cuda
     }
   }
 
-  inline void select_cuda_device(int argc, char** argv)
+  inline void select_cuda_device(int device_id)
   {
     int device_count = 0;
     CUDA_SAFE_CALL(cudaGetDeviceCount(&device_count));
     if (device_count == 0) throw ::std::runtime_error("No CUDA devices available");
-    int device_id = 0;
-    if (device_count > 1) {
-      if (argc < 2) throw ::std::runtime_error("Multiple GPUs available. Pass device index as argument.");
-      device_id = ::std::stoi(argv[1]);
-      if (device_id < 0 || device_id >= device_count) throw ::std::runtime_error("Invalid device index");
-    }
+    if (device_id < 0 || device_id >= device_count) throw ::std::runtime_error("Invalid device index");
     CUDA_SAFE_CALL(cudaSetDevice(device_id));
   }
 }  // namespace cuda

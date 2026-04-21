@@ -129,9 +129,10 @@ __global__ void convert_to_wide_kernel(
       if (i == 0) {
         task = new_task;
       } else {
-        atomicExch(&tasks[new_tasks_start + i - 1], new_task);
+        volatile_tasks[new_tasks_start + i - 1] = new_task;
       }
     }
+
     __threadfence();
     wide_nodes[wide_node_index] = wide_node;
   }

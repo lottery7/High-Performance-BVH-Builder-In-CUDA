@@ -103,10 +103,6 @@ static __device__ bool wide_any_hit_from(
     const int node_idx = stack[--sp];
     const WideBVHNode<Arity>& node = nodes[node_idx];
 
-    unsigned int hit_indices[Arity];
-    float hit_t_near[Arity];
-    unsigned int hit_count = 0;
-
     for (unsigned int slot = 0; slot < Arity; ++slot) {
       if ((node.valid_mask & (1u << slot)) == 0u) continue;
 
@@ -127,20 +123,8 @@ static __device__ bool wide_any_hit_from(
         continue;
       }
 
-      unsigned int insert_pos = hit_count;
-      while (insert_pos > 0 && t_near < hit_t_near[insert_pos - 1]) {
-        hit_t_near[insert_pos] = hit_t_near[insert_pos - 1];
-        hit_indices[insert_pos] = hit_indices[insert_pos - 1];
-        --insert_pos;
-      }
-      hit_t_near[insert_pos] = t_near;
-      hit_indices[insert_pos] = node.child_indices[slot];
-      ++hit_count;
-    }
-
-    curassert(sp + static_cast<int>(hit_count) < stack_capacity, 420833045);
-    for (int i = static_cast<int>(hit_count) - 1; i >= 0; --i) {
-      stack[sp++] = static_cast<int>(hit_indices[i]);
+      curassert(sp < stack_capacity, 420833045);
+      stack[sp++] = static_cast<int>(node.child_indices[slot]);
     }
   }
 

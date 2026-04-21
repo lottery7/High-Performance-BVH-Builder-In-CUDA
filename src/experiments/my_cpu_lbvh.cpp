@@ -51,9 +51,11 @@ RayTracingResult run_cpu_lbvh(
   CUDA_SYNC_STREAM(stream);
 
   fb.clear();
+  const int warmup = warmup_iters();
+  const int benchmark = benchmark_iters();
 
   std::vector<double> rt_times;
-  for (int iter = 0; iter < BENCHMARK_ITERS + WARMUP_ITERS; ++iter) {
+  for (int iter = 0; iter < benchmark + warmup; ++iter) {
     timer ray_tracing_t;
 
     cuda::rt_lbvh(
@@ -70,7 +72,7 @@ RayTracingResult run_cpu_lbvh(
         scene_gpu.n_faces);
     CUDA_SYNC_STREAM(stream);
 
-    if (iter >= WARMUP_ITERS) {
+    if (iter >= warmup) {
       rt_times.push_back(ray_tracing_t.elapsed());
     }
   }
