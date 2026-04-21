@@ -1,18 +1,18 @@
 #include <cuda_runtime_api.h>
 #include <libbase/timer.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 #include "experiments/common.h"
 #include "experiments/hploc.h"
 #include "experiments/hploc_wide.h"
-#include "experiments/kitten_lbvh.h"
-#include "experiments/my_cpu_lbvh.h"
-#include "experiments/my_gpu_lbvh.h"
+#include "experiments/lbvh.h"
 #include "io/camera_reader.h"
 #include "io/scene_reader.h"
 #include "kernels/structs/framebuffers.h"
@@ -23,11 +23,11 @@
 namespace
 {
   constexpr const char* usage_text =
-      "Usage: run_experiments --bench_iters <int> --warmup_iters <int> --experiments <list> --scenes <list> [--device <int>]\n"
-      "  experiments: cpu_lbvh, lbvh, gpu_lbvh, kitten_lbvh, hploc, hploc_bvh4, hploc_bvh8\n"
+      "Usage: run_experiments --bench_iters <int> --experiments <list> --scenes <list> [--disable_warmup] [--device <int>]\n"
+      "  experiments: lbvh, hploc, hploc_bvh4, hploc_bvh8\n"
       "  examples:\n"
-      "    run_experiments --bench_iters 10 --warmup_iters 10 --experiments hploc,hploc_bvh4,lbvh --scenes data/gnome/gnome.ply,data/powerplant/powerplant.obj\n"
-      "    run_experiments --bench_iters 1 --warmup_iters 0 --experiments hploc_bvh4 --scenes data/hairball/hairball.obj --device 0";
+      "    run_experiments --bench_iters 10 --experiments hploc,hploc_bvh4,lbvh --scenes data/gnome/gnome.ply,data/powerplant/powerplant.obj\n"
+      "    run_experiments --bench_iters 5 --disable_warmup --experiments hploc_bvh4 --scenes data/hairball/hairball.obj --device 0";
 
   [[noreturn]] void throw_usage(const std::string& message)
   {
@@ -37,7 +37,6 @@ namespace
   std::string normalize_experiment_name(std::string name)
   {
     name = trimmed(tolower(name));
-    if (name == "gpu_lbvh") return "lbvh";
     if (name == "hploc_wide4") return "hploc_bvh4";
     if (name == "hploc_wide8") return "hploc_bvh8";
     return name;
@@ -62,6 +61,13 @@ namespace
     } catch (const std::exception&) {
       throw_usage("Invalid value for " + name + ": " + value);
     }
+  }
+
+  int parse_positive_int(const std::string& name, const std::string& value)
+  {
+    const int parsed = parse_non_negative_int(name, value);
+    if (parsed == 0) throw_usage("Zero value for " + name + ": " + value);
+    return parsed;
   }
 
   bool is_option_name(std::string_view value) { return value.size() >= 2 && value[0] == '-' && value[1] == '-'; }
@@ -118,7 +124,6 @@ namespace
 
     RuntimeConfig config;
     bool has_benchmark_iters = false;
-    bool has_warmup_iters = false;
     bool has_experiments = false;
     bool has_scenes = false;
 
@@ -127,11 +132,10 @@ namespace
       if (arg == "--help") {
         throw_usage("Help requested");
       } else if (arg == "--bench_iters") {
-        config.benchmark_iters = parse_non_negative_int(arg, read_option_value(argc, argv, i));
+        config.benchmark_iters = parse_positive_int(arg, read_option_value(argc, argv, i));
         has_benchmark_iters = true;
-      } else if (arg == "--warmup_iters") {
-        config.warmup_iters = parse_non_negative_int(arg, read_option_value(argc, argv, i));
-        has_warmup_iters = true;
+      } else if (arg == "--disable_warmup") {
+        config.disable_warmup = true;
       } else if (arg == "--device") {
         config.cuda_device = parse_non_negative_int(arg, read_option_value(argc, argv, i));
       } else if (arg == "--experiments") {
@@ -139,8 +143,7 @@ namespace
         for (std::string& experiment_name : config.experiments) {
           experiment_name = normalize_experiment_name(experiment_name);
           const bool valid =
-              experiment_name == "cpu_lbvh" || experiment_name == "lbvh" || experiment_name == "kitten_lbvh" || experiment_name == "hploc" ||
-              experiment_name == "hploc_bvh4" || experiment_name == "hploc_bvh8";
+              experiment_name == "lbvh" || experiment_name == "hploc" || experiment_name == "hploc_bvh4" || experiment_name == "hploc_bvh8";
           if (!valid) throw_usage("Unknown experiment: " + experiment_name);
         }
         has_experiments = !config.experiments.empty();
@@ -152,7 +155,7 @@ namespace
       }
     }
 
-    if (!has_benchmark_iters || !has_warmup_iters || !has_experiments || !has_scenes) {
+    if (!has_benchmark_iters || !has_experiments || !has_scenes) {
       throw_usage("Missing required options");
     }
 
@@ -203,11 +206,7 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path)
   const RuntimeConfig& config = runtime_config_const();
   std::optional<RayTracingResult> ground_truth;
 
-  run_experiment_if_enabled(config, "cpu_lbvh", ground_truth, width, height, [&] { return run_cpu_lbvh(stream, scene, scene_gpu, fb, results_dir); });
-
-  run_experiment_if_enabled(config, "lbvh", ground_truth, width, height, [&] { return run_my_gpu_lbvh(stream, scene_gpu, fb, results_dir); });
-
-  run_experiment_if_enabled(config, "kitten_lbvh", ground_truth, width, height, [&] { return run_kitten_lbvh(scene_gpu, fb, results_dir); });
+  run_experiment_if_enabled(config, "lbvh", ground_truth, width, height, [&] { return run_lbvh(stream, scene_gpu, fb, results_dir); });
 
   run_experiment_if_enabled(config, "hploc", ground_truth, width, height, [&] { return run_hploc(stream, scene_gpu, fb, results_dir); });
 

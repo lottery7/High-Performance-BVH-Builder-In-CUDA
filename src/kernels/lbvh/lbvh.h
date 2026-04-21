@@ -4,7 +4,7 @@
 #include "../structs/morton_code.h"
 #include "../structs/scene.h"
 
-namespace cuda::my_lbvh
+namespace cuda::lbvh
 {
   void build(
       cudaStream_t stream,
@@ -17,4 +17,4 @@ namespace cuda::my_lbvh
       unsigned int *d_parents,
       unsigned int *d_flags,
       unsigned int n_faces);
-}  // namespace cuda::my_lbvh
+}  // namespace cuda::lbvh

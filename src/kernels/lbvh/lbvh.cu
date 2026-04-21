@@ -114,7 +114,7 @@ __global__ static void compute_parents_kernel(BVHNode *bvh, unsigned int *parent
   }
 }
 
-namespace cuda::my_lbvh
+namespace cuda::lbvh
 {
 
   void build(
@@ -144,4 +144,4 @@ namespace cuda::my_lbvh
     cudaMemsetAsync(d_flags, 0, sizeof(unsigned int) * (n_faces - 1), stream);
     build_aabb_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(d_bvh, d_parents, d_flags, n_faces);
   }
-}  // namespace cuda::my_lbvh
+}  // namespace cuda::lbvh

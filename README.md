@@ -54,17 +54,17 @@ cmake --build build --target hploc_topology_tests -j
 ```bash
 ./build/run_experiments \
   --bench_iters <N> \
-  --warmup_iters <N> \
   --experiments <список_экспериментов> \
   --scenes <список_сцен> \
+  [--disable_warmup] \
   [--device <id>]
 ```
 
+`run_experiments` использует adaptive warmup на CUDA events: перед замером каждый этап прогревается минимум 5 секунд, после чего раннер проверяет стабилизацию медианы. Если за 60 секунд стабилизации нет, печатается предупреждение. Для отключения прогрева есть флаг `--disable_warmup`.
+
 Поддерживаемые эксперименты:
 
-- `cpu_lbvh`
 - `lbvh`
-- `kitten_lbvh`
 - `hploc`
 - `hploc_bvh4`
 - `hploc_bvh8`
@@ -74,7 +74,6 @@ cmake --build build --target hploc_topology_tests -j
 ```bash
 ./build/run_experiments \
   --bench_iters 10 \
-  --warmup_iters 10 \
   --experiments hploc,hploc_bvh4,lbvh \
   --scenes data/gnome/gnome.ply,data/powerplant/powerplant.obj
 ```
@@ -83,8 +82,8 @@ cmake --build build --target hploc_topology_tests -j
 
 ```bash
 ./build/run_experiments \
-  --bench_iters 1 \
-  --warmup_iters 0 \
+  --bench_iters 5 \
+  --disable_warmup \
   --experiments hploc_bvh4 \
   --scenes data/hairball/hairball.obj \
   --device 0

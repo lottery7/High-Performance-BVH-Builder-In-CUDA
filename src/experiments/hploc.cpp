@@ -9,7 +9,7 @@
 #include "../kernels/structs/scene.h"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
-#include "libbase/timer.h"
+#include "benchmark.h"
 
 #define EXPERIMENT_NAME "H-PLOC"
 
@@ -34,20 +34,16 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
   CUDA_SAFE_CALL(cudaMallocAsync(&d_n_clusters, sizeof(unsigned int), stream));
   CUDA_SYNC_STREAM(stream);
 
-  const int warmup = warmup_iters();
-  const int benchmark = benchmark_iters();
-
   std::vector<double> build_times;
-  for (int iter = 0; iter < benchmark + warmup; ++iter) {
-    timer bvh_build_t;
-
-    cuda::hploc::build(stream, scene.aabb, scene.d_faces, scene.d_vertices, d_bvh, d_parents, d_morton_codes, d_cluster_ids, d_n_clusters, n_faces);
-    CUDA_SYNC_STREAM(stream);
-
-    if (iter >= warmup) {
-      build_times.push_back(bvh_build_t.elapsed());
-    }
-  }
+  CudaEventTimer timer;
+  const AdaptiveWarmupResult build_warmup = benchmark::run_adaptive([&](bool collect) {
+    const double sample_seconds = timer.measure(stream, [&] {
+      cuda::hploc::build(stream, scene.aabb, scene.d_faces, scene.d_vertices, d_bvh, d_parents, d_morton_codes, d_cluster_ids, d_n_clusters, n_faces);
+    });
+    if (collect) build_times.push_back(sample_seconds);
+    return sample_seconds;
+  });
+  print_warmup_report(EXPERIMENT_NAME, build_warmup);
 
   double build_mtris = n_faces * 1e-6f / stats::median(build_times);
   std::cout << EXPERIMENT_NAME " build times (in seconds) - " << stats::valuesStatsLine(build_times) << std::endl;
@@ -62,16 +58,14 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
   fb.clear();
 
   std::vector<double> rt_times;
-  for (int iter = 0; iter < benchmark + warmup; ++iter) {
-    timer ray_tracing_t;
-
-    cuda::rt_hploc(stream, width, height, scene.d_vertices, scene.d_faces, d_bvh, fb.d_face_id, fb.d_ao, scene.d_camera, scene.n_faces);
-    CUDA_SYNC_STREAM(stream);
-
-    if (iter >= warmup) {
-      rt_times.push_back(ray_tracing_t.elapsed());
-    }
-  }
+  const AdaptiveWarmupResult rt_warmup = benchmark::run_adaptive([&](bool collect) {
+    const double sample_seconds = timer.measure(stream, [&] {
+      cuda::rt_hploc(stream, width, height, scene.d_vertices, scene.d_faces, d_bvh, fb.d_face_id, fb.d_ao, scene.d_camera, scene.n_faces);
+    });
+    if (collect) rt_times.push_back(sample_seconds);
+    return sample_seconds;
+  });
+  print_warmup_report(EXPERIMENT_NAME " ray tracing", rt_warmup);
 
   double mrays = width * height * AO_SAMPLES * 1e-6f / stats::median(rt_times);
   std::cout << EXPERIMENT_NAME " ray tracing frame render times (in seconds) - " << stats::valuesStatsLine(rt_times) << std::endl;

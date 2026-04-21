@@ -16,9 +16,7 @@ add_subdirectory(libs)
 set(SOURCES
         src/io/camera_reader.cpp
         src/io/scene_reader.cpp
-        src/experiments/my_cpu_lbvh.cpp
-        src/experiments/my_gpu_lbvh.cpp
-        src/experiments/kitten_lbvh.cpp
+        src/experiments/lbvh.cpp
         src/experiments/hploc.cpp
         src/experiments/hploc_wide.cpp
 )
@@ -33,9 +31,7 @@ set(CUDA_SOURCES
         src/kernels/helpers/fill.cu
         src/kernels/helpers/fill_indices.cu
         src/kernels/helpers/sort_by_key.cu
-        src/kernels/kitten_utils/compute_faces_aabb.cu
-        src/kernels/kitten_utils/convert_to_bvh_nodes.cu
-        src/kernels/my_lbvh/my_lbvh.cu
+        src/kernels/lbvh/lbvh.cu
         src/kernels/h_ploc/hploc.cu
         src/kernels/h_ploc/hploc_wide.cu
         src/kernels/helpers/compute_motron_codes.cu
@@ -47,7 +43,6 @@ set(LIBRARIES
         libjson
         libbase
         glm::glm
-        KittenGpuLBVH
 )
 
 # ---- Packages ----

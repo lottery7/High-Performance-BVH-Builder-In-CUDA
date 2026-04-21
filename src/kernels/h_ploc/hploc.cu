@@ -1,5 +1,6 @@
 #include <cooperative_groups/details/helpers.h>
 #include <cuda_runtime.h>
+#include <float.h>
 
 #include "../../utils/utils.h"
 #include "../kernels.h"
@@ -16,7 +17,7 @@ __device__ __forceinline__ static unsigned int get_lane_id()
   return threadIdx.x & (WARP_SIZE - 1);
 }
 
-__device__ __forceinline__ int lcp(const MortonCode* morton_codes, int n, int i, int j)
+__device__ __forceinline__ static int lcp(const MortonCode* morton_codes, int n, int i, int j)
 {
   if (i < 0 || j < 0 || i >= n || j >= n) return -1;
   if (morton_codes[i] == morton_codes[j]) return 32 + __clz(static_cast<unsigned int>(i) ^ static_cast<unsigned int>(j));
@@ -50,15 +51,15 @@ __device__ __forceinline__ static unsigned int load_cluster_id(
   return n_valid_clusters;
 }
 
-__device__ __forceinline__ AABB shfl_aabb(unsigned mask, AABB aabb, int srcLane)
+__device__ __forceinline__ static AABB shfl_aabb(unsigned mask, AABB aabb, int src_lane)
 {
   return {
-      __shfl_sync(mask, aabb.min_x, srcLane),
-      __shfl_sync(mask, aabb.min_y, srcLane),
-      __shfl_sync(mask, aabb.min_z, srcLane),
-      __shfl_sync(mask, aabb.max_x, srcLane),
-      __shfl_sync(mask, aabb.max_y, srcLane),
-      __shfl_sync(mask, aabb.max_z, srcLane),
+      __shfl_sync(mask, aabb.min_x, src_lane),
+      __shfl_sync(mask, aabb.min_y, src_lane),
+      __shfl_sync(mask, aabb.min_z, src_lane),
+      __shfl_sync(mask, aabb.max_x, src_lane),
+      __shfl_sync(mask, aabb.max_y, src_lane),
+      __shfl_sync(mask, aabb.max_z, src_lane),
   };
 }
 
@@ -125,51 +126,45 @@ __device__ __forceinline__ static AABB shfl_down_sync(unsigned int mask, AABB va
   return {min_x, min_y, min_z, max_x, max_y, max_z};
 }
 
+__device__ __forceinline__ static unsigned int ordered_positive_float_bits(float value) { return __float_as_uint(value); }
+
 __device__ static unsigned int find_nearest_neighbor(unsigned int warp_n_clusters, AABB cluster_aabb)
 {
   curassert(warp_n_clusters <= WARP_SIZE, 81387392);
   unsigned int lane_id = get_lane_id();
 
-  // TODO uint2 в оригинале - возможно быстрее за счет сравнения интов вместо флоатов
-  float min_area = FLT_MAX;
-  // lane_id соседа, объединение с которым дает min_area (nearest neighbor's lane id)
-  unsigned int nn_lane_id = INVALID_INDEX;
+  // surface_area() всегда неотрицательна, поэтому порядок float сохраняется и в unsigned битах
+  uint2 nearest = make_uint2(ordered_positive_float_bits(FLT_MAX), INVALID_INDEX);
 
-  // #pragma unroll TODO
   for (unsigned int r = 1; r <= SEARCH_RADIUS; r++) {
     // === Поиск вправо (+ r)
     unsigned int neighbor_lane_id = lane_id + r;
     // Обновляем минимум у lane_id
     AABB neighbor_aabb = shfl_down_sync(ALL_THREADS, cluster_aabb, r);
-    float union_area = FLT_MAX;  // Площадь поверхности объединения текущего и соседнего кластеров (lane_id U [lane_id + r])
+    uint2 candidate = make_uint2(ordered_positive_float_bits(FLT_MAX), INVALID_INDEX);
     if (neighbor_lane_id < warp_n_clusters) {
-      union_area = AABB::union_of(cluster_aabb, neighbor_aabb).surface_area();
+      candidate = make_uint2(ordered_positive_float_bits(AABB::union_of(cluster_aabb, neighbor_aabb).surface_area()), neighbor_lane_id);
       // Update min_distance[i, i + r]
-      if (union_area < min_area) {
-        min_area = union_area;
-        nn_lane_id = neighbor_lane_id;
+      if (candidate.x < nearest.x) {
+        nearest = candidate;
       }
     }
 
     // === Поиск влево (- r)
     // Обновляем минимум у lane_id + r (мы для него - lane_id - r)
     // Текущий минимум у lane_id + r
-    float neighbor_min_area = __shfl_down_sync(ALL_THREADS, min_area, r);
-    unsigned int neighbor_nn_lane_id = __shfl_down_sync(ALL_THREADS, nn_lane_id, r);
-    if (neighbor_lane_id < warp_n_clusters && union_area < neighbor_min_area) {
-      neighbor_min_area = union_area;
-      neighbor_nn_lane_id = lane_id;
+    uint2 neighbor_nearest = make_uint2(__shfl_down_sync(ALL_THREADS, nearest.x, r), __shfl_down_sync(ALL_THREADS, nearest.y, r));
+    if (neighbor_lane_id < warp_n_clusters && candidate.x < neighbor_nearest.x) {
+      neighbor_nearest = make_uint2(candidate.x, lane_id);
     }
     // Тут в lane_id + r мы получаем минимум из lane_id, по сути передаем обновленный минимум в lane_id + r
-    float left_neighbor_min_area = __shfl_up_sync(ALL_THREADS, neighbor_min_area, r);
-    unsigned int left_neighbor_nn_lane_id = __shfl_up_sync(ALL_THREADS, neighbor_nn_lane_id, r);
+    uint2 left_neighbor_nearest = make_uint2(__shfl_up_sync(ALL_THREADS, neighbor_nearest.x, r), __shfl_up_sync(ALL_THREADS, neighbor_nearest.y, r));
     if (lane_id < warp_n_clusters && lane_id >= r) {
-      min_area = left_neighbor_min_area;
-      nn_lane_id = left_neighbor_nn_lane_id;
+      nearest = left_neighbor_nearest;
     }
   }
 
-  return nn_lane_id;
+  return nearest.y;
 }
 
 __device__ static void ploc_merge(

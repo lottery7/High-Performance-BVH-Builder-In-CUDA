@@ -12,7 +12,7 @@
 #include "../kernels/structs/wide_bvh_node.h"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
-#include "libbase/timer.h"
+#include "benchmark.h"
 
 template <unsigned int Arity>
 RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
@@ -49,42 +49,38 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
   CUDA_SAFE_CALL(cudaMallocAsync(&d_next_wide_node, sizeof(unsigned int), stream));
   CUDA_SYNC_STREAM(stream);
 
-  const int warmup = warmup_iters();
-  const int benchmark = benchmark_iters();
-
   std::vector<double> bvh2_build_times;
   std::vector<double> conversion_times;
   std::vector<double> total_build_times;
-  for (int iter = 0; iter < benchmark + warmup; ++iter) {
-    timer total_build_t;
-    timer bvh2_build_t;
+  CudaEventTimer timer;
+  const AdaptiveWarmupResult build_warmup = benchmark::run_adaptive([&](bool collect) {
+    const double bvh2_time = timer.measure(stream, [&] {
+      cuda::hploc::build(
+          stream,
+          scene.aabb,
+          scene.d_faces,
+          scene.d_vertices,
+          d_binary_bvh,
+          d_parents,
+          d_morton_codes,
+          d_cluster_ids,
+          d_n_binary_nodes,
+          n_faces);
+    });
+    const double conversion_time = timer.measure(stream, [&] {
+      cuda::hploc::convert_to_wide<Arity>(stream, d_binary_bvh, d_wide_bvh, d_tasks, d_next_task, d_next_wide_node, n_faces);
+    });
+    const double total_build_time = bvh2_time + conversion_time;
 
-    cuda::hploc::build(
-        stream,
-        scene.aabb,
-        scene.d_faces,
-        scene.d_vertices,
-        d_binary_bvh,
-        d_parents,
-        d_morton_codes,
-        d_cluster_ids,
-        d_n_binary_nodes,
-        n_faces);
-    CUDA_SYNC_STREAM(stream);
-    const double bvh2_time = bvh2_build_t.elapsed();
-
-    timer conversion_t;
-    cuda::hploc::convert_to_wide<Arity>(stream, d_binary_bvh, d_wide_bvh, d_tasks, d_next_task, d_next_wide_node, n_faces);
-    CUDA_SYNC_STREAM(stream);
-    const double conversion_time = conversion_t.elapsed();
-    const double total_build_time = total_build_t.elapsed();
-
-    if (iter >= warmup) {
+    if (collect) {
       bvh2_build_times.push_back(bvh2_time);
       conversion_times.push_back(conversion_time);
       total_build_times.push_back(total_build_time);
     }
-  }
+
+    return total_build_time;
+  });
+  print_warmup_report(experiment_name, build_warmup);
 
   const double build_mtris = n_faces * 1e-6f / stats::median(total_build_times);
   std::cout << experiment_name << " BVH2 build times (in seconds) - " << stats::valuesStatsLine(bvh2_build_times) << std::endl;
@@ -101,16 +97,14 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
   fb.clear();
 
   std::vector<double> rt_times;
-  for (int iter = 0; iter < benchmark + warmup; ++iter) {
-    timer ray_tracing_t;
-
-    cuda::rt_hploc_wide<Arity>(stream, width, height, scene.d_vertices, scene.d_faces, d_wide_bvh, fb.d_face_id, fb.d_ao, scene.d_camera);
-    CUDA_SYNC_STREAM(stream);
-
-    if (iter >= warmup) {
-      rt_times.push_back(ray_tracing_t.elapsed());
-    }
-  }
+  const AdaptiveWarmupResult rt_warmup = benchmark::run_adaptive([&](bool collect) {
+    const double sample_seconds = timer.measure(stream, [&] {
+      cuda::rt_hploc_wide<Arity>(stream, width, height, scene.d_vertices, scene.d_faces, d_wide_bvh, fb.d_face_id, fb.d_ao, scene.d_camera);
+    });
+    if (collect) rt_times.push_back(sample_seconds);
+    return sample_seconds;
+  });
+  print_warmup_report(experiment_name + " ray tracing", rt_warmup);
 
   const double mrays = width * height * AO_SAMPLES * 1e-6f / stats::median(rt_times);
   std::cout << experiment_name << " ray tracing frame render times (in seconds) - " << stats::valuesStatsLine(rt_times) << std::endl;
