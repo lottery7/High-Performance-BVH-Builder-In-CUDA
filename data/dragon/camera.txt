@@ -1,0 +1,5 @@
+<!DOCTYPE ViewState>
+<project>
+ <VCGCamera BinaryData="0" TranslationVector="0.0058789 -0.124951 -0.265068 1" RotationMatrix="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 " ViewportPx="1177 959" FocalMm="30.659481" CameraType="0" LensDistortion="0 0" PixelSizeMm="0.0369161 0.0369161" CenterPx="588 479"/>
+ <ViewSettings FarPlane="5.0907364" TrackScale="11.23994" NearPlane="0.3031089"/>
+</project>

@@ -5,7 +5,10 @@ AGENTS.md
 .DS_Store
 .idea
 build*
-data**
+data/*
+data/*/*
+!data/*/
+!data/*/camera.txt
 results**
 cmake-build*
 .vs
