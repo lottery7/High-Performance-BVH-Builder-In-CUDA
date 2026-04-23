@@ -522,22 +522,22 @@ SceneGeometry load_scene(const std::string& path)
     const point3f v1 = scene->vertices[face.y];
     const point3f v2 = scene->vertices[face.z];
 
-    point3f centroid;
-    centroid.x = (v0.x + v1.x + v2.x) * (1.0f / 3.0f);
-    centroid.y = (v0.y + v1.y + v2.y) * (1.0f / 3.0f);
-    centroid.z = (v0.z + v1.z + v2.z) * (1.0f / 3.0f);
+    const float min_x = std::min(std::min(v0.x, v1.x), v2.x);
+    const float min_y = std::min(std::min(v0.y, v1.y), v2.y);
+    const float min_z = std::min(std::min(v0.z, v1.z), v2.z);
+    const float max_x = std::max(std::max(v0.x, v1.x), v2.x);
+    const float max_y = std::max(std::max(v0.y, v1.y), v2.y);
+    const float max_z = std::max(std::max(v0.z, v1.z), v2.z);
 
     if (i == 0) {
-      scene->aabb.min_x = scene->aabb.max_x = centroid.x;
-      scene->aabb.min_y = scene->aabb.max_y = centroid.y;
-      scene->aabb.min_z = scene->aabb.max_z = centroid.z;
+      scene->aabb = {min_x, min_y, min_z, max_x, max_y, max_z};
     } else {
-      scene->aabb.min_x = std::min(scene->aabb.min_x, centroid.x);
-      scene->aabb.min_y = std::min(scene->aabb.min_y, centroid.y);
-      scene->aabb.min_z = std::min(scene->aabb.min_z, centroid.z);
-      scene->aabb.max_x = std::max(scene->aabb.max_x, centroid.x);
-      scene->aabb.max_y = std::max(scene->aabb.max_y, centroid.y);
-      scene->aabb.max_z = std::max(scene->aabb.max_z, centroid.z);
+      scene->aabb.min_x = std::min(scene->aabb.min_x, min_x);
+      scene->aabb.min_y = std::min(scene->aabb.min_y, min_y);
+      scene->aabb.min_z = std::min(scene->aabb.min_z, min_z);
+      scene->aabb.max_x = std::max(scene->aabb.max_x, max_x);
+      scene->aabb.max_y = std::max(scene->aabb.max_y, max_y);
+      scene->aabb.max_z = std::max(scene->aabb.max_z, max_z);
     }
   }
   std::cout << "cMin: (" << scene->aabb.min_x << ", " << scene->aabb.min_y << ", " << scene->aabb.min_z << ")\n";

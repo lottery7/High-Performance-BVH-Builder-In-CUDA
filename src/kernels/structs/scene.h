@@ -4,6 +4,7 @@
 
 #include "../../io/scene_reader.h"
 #include "camera.h"
+#include "utils/utils.h"
 
 namespace cuda
 {

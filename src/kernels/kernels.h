@@ -51,14 +51,5 @@ namespace cuda
 
   void fill_indices(cudaStream_t stream, unsigned int* d_indices, unsigned int n);
 
-  template <typename K, typename V>
-  void sort_by_key(cudaStream_t stream, K* d_keys, V* d_vals, size_t n);
-
-  void compute_morton_codes(
-      cudaStream_t stream,
-      AABB scene_aabb,
-      unsigned int* d_faces,
-      float* d_vertices,
-      MortonCode* d_morton_codes,
-      unsigned int n_faces);
+  __global__ void compute_mortons_kernel(AABB scene_aabb, unsigned int* faces, float* vertices, MortonCode* morton_codes, unsigned int n_faces);
 }  // namespace cuda

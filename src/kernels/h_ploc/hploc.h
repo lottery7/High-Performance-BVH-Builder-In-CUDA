@@ -5,15 +5,13 @@
 
 namespace cuda::hploc
 {
-  void build(
-      cudaStream_t stream,
-      AABB scene_aabb,
-      unsigned int* d_faces,
-      float* d_vertices,
-      BVHNode* d_nodes,
-      unsigned int* d_parents,
-      MortonCode* d_morton_codes,
-      unsigned int* d_cluster_ids,
-      unsigned int* d_n_clusters,
+  __global__ void build_leaves_nodes_kernel(const unsigned int* faces, unsigned int n_faces, const float* vertices, BVHNode* nodes);
+
+  __global__ void build_kernel(
+      unsigned int* parents,
+      const MortonCode* morton_codes,
+      BVHNode* nodes,
+      unsigned int* cluster_ids,
+      unsigned int* n_clusters,
       unsigned int n_faces);
-}
+}  // namespace cuda::hploc

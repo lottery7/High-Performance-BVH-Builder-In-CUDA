@@ -1,7 +1,8 @@
 #pragma once
 
-#include <cmath>
 #include <cuda_runtime.h>
+
+#include <cmath>
 
 struct AABB {
   // Minimum corner of the box
@@ -20,6 +21,14 @@ struct AABB {
     float dy = max_y - min_y;
     float dz = max_z - min_z;
     return 2.0 * (dx * dy + dy * dz + dz * dx);
+  }
+
+  __host__ __device__ float half_area() const
+  {
+    float dx = max_x - min_x;
+    float dy = max_y - min_y;
+    float dz = max_z - min_z;
+    return fmaf(dz, dx + dy, dx * dy);
   }
 
   __host__ __device__ static AABB union_of(const AABB& lhs, const AABB& rhs)

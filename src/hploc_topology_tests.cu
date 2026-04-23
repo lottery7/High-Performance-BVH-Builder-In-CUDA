@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cub/device/device_radix_sort.cuh>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -12,11 +13,13 @@
 
 #include "kernels/h_ploc/hploc.h"
 #include "kernels/h_ploc/hploc_wide.h"
+#include "kernels/kernels.h"
 #include "kernels/structs/aabb.h"
 #include "kernels/structs/bvh_node.h"
 #include "kernels/structs/morton_code.h"
 #include "kernels/structs/wide_bvh_node.h"
 #include "utils/defines.h"
+#include "utils/utils.h"
 
 namespace
 {
@@ -131,22 +134,73 @@ namespace
     BVHNode* d_nodes = nullptr;
     unsigned int* d_parents = nullptr;
     MortonCode* d_morton_codes = nullptr;
+    MortonCode* d_morton_codes_sorted = nullptr;
     unsigned int* d_cluster_ids = nullptr;
+    unsigned int* d_cluster_ids_sorted = nullptr;
     unsigned int* d_n_clusters = nullptr;
+    void* d_sort_temp_storage = nullptr;
+    size_t sort_temp_storage_bytes = 0;
 
     TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_vertices), sizeof(float) * scene.vertices.size()));
     TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_faces), sizeof(unsigned int) * scene.faces.size()));
-    TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_nodes), sizeof(BVHNode) * max_nodes));
-    TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_parents), sizeof(unsigned int) * max_nodes));
-    TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_morton_codes), sizeof(MortonCode) * n_faces));
-    TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_cluster_ids), sizeof(unsigned int) * max_nodes));
-    TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_n_clusters), sizeof(unsigned int)));
+      TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_nodes), sizeof(BVHNode) * max_nodes));
+      TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_parents), sizeof(unsigned int) * max_nodes));
+      TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_morton_codes), sizeof(MortonCode) * n_faces));
+      TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_morton_codes_sorted), sizeof(MortonCode) * n_faces));
+      TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_cluster_ids), sizeof(unsigned int) * max_nodes));
+      TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_cluster_ids_sorted), sizeof(unsigned int) * n_faces));
+      TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_n_clusters), sizeof(unsigned int)));
+      TEST_CUDA(cub::DeviceRadixSort::SortPairs(
+          nullptr,
+          sort_temp_storage_bytes,
+          d_morton_codes,
+          d_morton_codes_sorted,
+          d_cluster_ids,
+          d_cluster_ids_sorted,
+          static_cast<int>(n_faces),
+          2,
+          32,
+          stream));
+      TEST_CUDA(cudaMalloc(reinterpret_cast<void**>(&d_sort_temp_storage), sort_temp_storage_bytes));
 
     try {
       TEST_CUDA(cudaMemcpyAsync(d_vertices, scene.vertices.data(), sizeof(float) * scene.vertices.size(), cudaMemcpyHostToDevice, stream));
       TEST_CUDA(cudaMemcpyAsync(d_faces, scene.faces.data(), sizeof(unsigned int) * scene.faces.size(), cudaMemcpyHostToDevice, stream));
 
-      cuda::hploc::build(stream, scene.scene_aabb, d_faces, d_vertices, d_nodes, d_parents, d_morton_codes, d_cluster_ids, d_n_clusters, n_faces);
+      TEST_CUDA(cudaMemsetAsync(d_parents, 0xff, sizeof(unsigned int) * max_nodes, stream));
+      TEST_CUDA(cudaMemcpyAsync(d_n_clusters, &n_faces, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
+
+      cuda::hploc::build_leaves_nodes_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(
+          d_faces,
+          n_faces,
+          d_vertices,
+          d_nodes);
+      cuda::fill_indices(stream, d_cluster_ids, n_faces);
+      cuda::compute_mortons_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(
+          scene.scene_aabb,
+          d_faces,
+          d_vertices,
+          d_morton_codes,
+          n_faces);
+      TEST_CUDA(cub::DeviceRadixSort::SortPairs(
+          d_sort_temp_storage,
+          sort_temp_storage_bytes,
+          d_morton_codes,
+          d_morton_codes_sorted,
+          d_cluster_ids,
+          d_cluster_ids_sorted,
+          static_cast<int>(n_faces),
+          2,
+          32,
+          stream));
+      constexpr size_t block_size = 128;
+      cuda::hploc::build_kernel<<<div_ceil(n_faces, block_size), block_size, 0, stream>>>(
+          d_parents,
+          d_morton_codes_sorted,
+          d_nodes,
+          d_cluster_ids_sorted,
+          d_n_clusters,
+          n_faces);
       TEST_CUDA(cudaGetLastError());
       TEST_CUDA(cudaStreamSynchronize(stream));
 
@@ -162,8 +216,11 @@ namespace
       TEST_CUDA(cudaFree(d_nodes));
       TEST_CUDA(cudaFree(d_parents));
       TEST_CUDA(cudaFree(d_morton_codes));
+      TEST_CUDA(cudaFree(d_morton_codes_sorted));
       TEST_CUDA(cudaFree(d_cluster_ids));
+      TEST_CUDA(cudaFree(d_cluster_ids_sorted));
       TEST_CUDA(cudaFree(d_n_clusters));
+      TEST_CUDA(cudaFree(d_sort_temp_storage));
       return nodes;
     } catch (...) {
       cudaFree(d_vertices);
@@ -171,8 +228,11 @@ namespace
       cudaFree(d_nodes);
       cudaFree(d_parents);
       cudaFree(d_morton_codes);
+      cudaFree(d_morton_codes_sorted);
       cudaFree(d_cluster_ids);
+      cudaFree(d_cluster_ids_sorted);
       cudaFree(d_n_clusters);
+      cudaFree(d_sort_temp_storage);
       throw;
     }
   }

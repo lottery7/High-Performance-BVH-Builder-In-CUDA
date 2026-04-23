@@ -16,12 +16,13 @@ add_subdirectory(libs)
 set(SOURCES
         src/io/camera_reader.cpp
         src/io/scene_reader.cpp
-        src/experiments/lbvh.cpp
-        src/experiments/hploc.cpp
-        src/experiments/hploc_wide.cpp
+        src/experiments/nexus_hploc.cpp
 )
 
 set(CUDA_SOURCES
+        src/experiments/lbvh.cu
+        src/experiments/hploc.cu
+        src/experiments/hploc_wide.cu
         src/kernels/helpers/camera_helpers.cuh
         src/kernels/helpers/geometry_helpers.cu
         src/kernels/helpers/random_helpers.cu
@@ -30,10 +31,10 @@ set(CUDA_SOURCES
         src/kernels/ray_tracing/rt_hploc_wide.cu
         src/kernels/helpers/fill.cu
         src/kernels/helpers/fill_indices.cu
-        src/kernels/helpers/sort_by_key.cu
         src/kernels/lbvh/lbvh.cu
         src/kernels/h_ploc/hploc.cu
         src/kernels/h_ploc/hploc_wide.cu
+        src/kernels/nexus_hploc/nexus_hploc.cu
         src/kernels/helpers/compute_motron_codes.cu
 )
 
@@ -92,7 +93,7 @@ endif ()
 add_executable(run_experiments src/main.cpp)
 target_link_libraries(run_experiments PRIVATE ${PROJECT_NAME}_core)
 
-add_executable(hploc_topology_tests src/hploc_topology_tests.cpp)
+add_executable(hploc_topology_tests src/hploc_topology_tests.cu)
 target_link_libraries(hploc_topology_tests PRIVATE ${PROJECT_NAME}_core)
 
 add_test(NAME hploc_topology_tests COMMAND hploc_topology_tests)
