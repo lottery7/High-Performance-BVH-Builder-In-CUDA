@@ -3,7 +3,7 @@
 #include <float.h>
 
 #include "../../utils/utils.h"
-#include "../kernels.h"
+#include "../helpers/helpers.cuh"
 #include "../structs/aabb.h"
 #include "../structs/morton_code.h"
 
@@ -95,12 +95,12 @@ __device__ static unsigned int merge_clusters_create_bvh2_node(
   }
 
   // Для обеспечения occupancy убираем потоки, которые соответствуют смерженым кластерам (из двух оставляем один)
-  unsigned int active_mask = __ballot_sync(ALL_THREADS, should_merge || !is_mutual_nn);
+  const unsigned int active_mask = __ballot_sync(ALL_THREADS, should_merge || !is_mutual_nn);
 
   // find nth set bit - n-ый включенный бит - lane_id потока, который должен занять наш поток
-  unsigned int new_lane_id = __fns(active_mask, 0, lane_id + 1);
+  const int new_lane_id = __fns(active_mask, 0, lane_id + 1);
   cluster_id = __shfl_sync(ALL_THREADS, cluster_id, new_lane_id);
-  if (new_lane_id == INVALID_INDEX) cluster_id = INVALID_INDEX;
+  if (new_lane_id == -1) cluster_id = INVALID_INDEX;
   cluster_aabb = shfl_sync(ALL_THREADS, cluster_aabb, new_lane_id);
 
   return warp_n_clusters - merges_count;
@@ -148,7 +148,7 @@ __device__ static void ploc_merge(
     unsigned int* cluster_ids,
     unsigned int* n_clusters)
 {
-  // Получаем границы узла из thread_id
+  // Получаем границы узла из target_lane_id
   unsigned int l_start = __shfl_sync(ALL_THREADS, left, target_lane_id);
   unsigned int l_end = __shfl_sync(ALL_THREADS, split, target_lane_id);
   unsigned int r_end = __shfl_sync(ALL_THREADS, right, target_lane_id) + 1;
@@ -160,7 +160,7 @@ __device__ static void ploc_merge(
   curassert(l_start <= l_end, 150462);
   curassert(l_end <= r_end, 70862572);
 
-  // Загружаем индексы кластеров из детей thread_id
+  // Загружаем индексы кластеров из детей target_lane_id
   unsigned int n_left_clusters = load_cluster_id(l_start, l_end, 0, cluster_ids, cluster_id);
   unsigned int n_right_clusters = load_cluster_id(r_start, r_end, n_left_clusters, cluster_ids, cluster_id);
   unsigned int warp_n_clusters = n_left_clusters + n_right_clusters;

@@ -11,9 +11,9 @@
 #include <string>
 #include <vector>
 
-#include "kernels/h_ploc/hploc.h"
-#include "kernels/h_ploc/hploc_wide.h"
-#include "kernels/kernels.h"
+#include "kernels/helpers/helpers.cuh"
+#include "kernels/hploc/hploc.cuh"
+#include "kernels/hploc/hploc_wide.cuh"
 #include "kernels/structs/aabb.h"
 #include "kernels/structs/bvh_node.h"
 #include "kernels/structs/morton_code.h"

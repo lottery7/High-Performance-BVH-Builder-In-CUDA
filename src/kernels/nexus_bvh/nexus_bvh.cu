@@ -1,12 +1,10 @@
-#include "nexus_hploc.h"
-
-#include <cub/device/device_radix_sort.cuh>
-
 #include <cfloat>
 #include <cstdint>
+#include <cub/device/device_radix_sort.cuh>
 
 #include "../../utils/defines.h"
 #include "../../utils/utils.h"
+#include "nexus_bvh.cuh"
 
 namespace
 {
@@ -15,15 +13,6 @@ namespace
   constexpr unsigned int SEARCH_RADIUS = 8u;
   constexpr unsigned int MERGING_THRESHOLD = 16u;
   constexpr float SCENE_EPSILON = 1e-9f;
-
-  struct BuildState {
-    AABB* scene_bounds;
-    BVHNode* nodes;
-    unsigned int* cluster_indices;
-    unsigned int* parent_indices;
-    unsigned int prim_count;
-    unsigned int* cluster_count;
-  };
 
   __device__ __forceinline__ unsigned int get_lane_id() { return threadIdx.x & (WARP_SIZE - 1u); }
 
@@ -161,7 +150,10 @@ namespace
     const unsigned int z = static_cast<unsigned int>(centroid.z * 0x3ffu);
     return morton_code32(x, y, z);
   }
+}  // namespace
 
+namespace cuda::nexus_bvh
+{
   __global__ void compute_scene_bounds_kernel(BuildState build_state, const unsigned int* faces, const float* vertices)
   {
     const unsigned int prim_index = blockDim.x * blockIdx.x + threadIdx.x;
@@ -378,9 +370,9 @@ namespace
       }
     }
   }
-}  // namespace
+}  // namespace cuda::nexus_bvh
 
-namespace cuda::nexus_hploc
+namespace cuda::nexus_bvh
 {
   namespace
   {
@@ -561,4 +553,4 @@ namespace cuda::nexus_hploc
   {
     build_impl(stream, d_faces, d_vertices, d_nodes, workspace, n_faces, &timings);
   }
-}  // namespace cuda::nexus_hploc
+}  // namespace cuda::nexus_bvh

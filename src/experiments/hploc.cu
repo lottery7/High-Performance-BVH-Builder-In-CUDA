@@ -5,9 +5,9 @@
 #include <thrust/detail/sequence.inl>
 #include <vector>
 
-#include "../kernels/h_ploc/hploc.h"
-#include "../kernels/kernels.h"
-#include "../kernels/ray_tracing/rt_hploc.h"
+#include "../kernels/helpers/helpers.cuh"
+#include "../kernels/hploc/hploc.cuh"
+#include "../kernels/ray_tracing/rt.cuh"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
 #include "benchmark.h"
@@ -179,7 +179,7 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
     CUDA_SAFE_CALL(cudaEventRecord(events.build_stop, stream));
 
     CUDA_SAFE_CALL(cudaEventRecord(events.rt_start, stream));
-    rt_hploc_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
+    cuda::hploc::rt_hploc_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene.d_vertices,
         scene.d_faces,
         d_bvh,

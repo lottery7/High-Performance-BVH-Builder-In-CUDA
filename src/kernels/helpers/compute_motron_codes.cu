@@ -2,9 +2,9 @@
 
 #include "../../utils/defines.h"
 #include "../../utils/utils.h"
-#include "../kernels.h"
 #include "../structs/aabb.h"
 #include "../structs/morton_code.h"
+#include "helpers.cuh"
 
 namespace cuda
 {

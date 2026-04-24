@@ -13,7 +13,8 @@
 #include "experiments/hploc.h"
 #include "experiments/hploc_wide.h"
 #include "experiments/lbvh.h"
-#include "experiments/nexus_hploc.h"
+#include "experiments/nexus_bvh.h"
+#include "experiments/nexus_bvh_wide.h"
 #include "io/camera_reader.h"
 #include "io/scene_reader.h"
 #include "kernels/structs/framebuffers.h"
@@ -25,9 +26,9 @@ namespace
 {
   constexpr const char* usage_text =
       "Usage: run_experiments --bench_iters <int> --experiments <list> --scenes <list> [--disable_warmup] [--device <int>]\n"
-      "  experiments: lbvh, hploc, hploc_bvh4, hploc_bvh8, nexus_hploc\n"
+      "  experiments: lbvh, hploc, hploc_bvh4, hploc_bvh8, nexus_bvh, nexus_bvh_wide\n"
       "  examples:\n"
-      "    run_experiments --bench_iters 10 --experiments hploc,hploc_bvh4,lbvh,nexus_hploc --scenes "
+      "    run_experiments --bench_iters 10 --experiments hploc,hploc_bvh4,lbvh,nexus_bvh,nexus_bvh_wide --scenes "
       "data/gnome/gnome.ply,data/powerplant/powerplant.obj\n"
       "    run_experiments --bench_iters 5 --disable_warmup --experiments hploc_bvh4 --scenes data/hairball/hairball.obj --device 0";
 
@@ -38,6 +39,7 @@ namespace
     name = trimmed(tolower(name));
     if (name == "hploc_wide4") return "hploc_bvh4";
     if (name == "hploc_wide8") return "hploc_bvh8";
+    if (name == "nexus_bvh_wide8") return "nexus_bvh_wide";
     return name;
   }
 
@@ -142,7 +144,7 @@ namespace
         for (std::string& experiment_name : config.experiments) {
           experiment_name = normalize_experiment_name(experiment_name);
           const bool valid = experiment_name == "lbvh" || experiment_name == "hploc" || experiment_name == "hploc_bvh4" ||
-                             experiment_name == "hploc_bvh8" || experiment_name == "nexus_hploc";
+                             experiment_name == "hploc_bvh8" || experiment_name == "nexus_bvh" || experiment_name == "nexus_bvh_wide";
           if (!valid) throw_usage("Unknown experiment: " + experiment_name);
         }
         has_experiments = !config.experiments.empty();
@@ -213,7 +215,9 @@ static void process_scene(cudaStream_t stream, const std::string& scene_path)
 
   run_experiment_if_enabled(config, "hploc_bvh8", ground_truth, width, height, [&] { return run_hploc_wide<8>(stream, scene_gpu, fb, results_dir); });
 
-  run_experiment_if_enabled(config, "nexus_hploc", ground_truth, width, height, [&] { return run_nexus_hploc(stream, scene_gpu, fb, results_dir); });
+  run_experiment_if_enabled(config, "nexus_bvh", ground_truth, width, height, [&] { return run_nexus_bvh(stream, scene_gpu, fb, results_dir); });
+
+  run_experiment_if_enabled(config, "nexus_bvh_wide", ground_truth, width, height, [&] { return run_nexus_bvh_wide(stream, scene_gpu, fb, results_dir); });
 }
 
 static void run(int argc, char** argv)

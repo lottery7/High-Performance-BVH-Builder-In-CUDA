@@ -2,7 +2,7 @@
 
 #include "../../utils/defines.h"
 #include "../../utils/utils.h"
-#include "../kernels.h"
+#include "../helpers/helpers.cuh"
 #include "../structs/aabb.h"
 #include "../structs/bvh_node.h"
 #include "../structs/morton_code.h"

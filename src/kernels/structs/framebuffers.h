@@ -4,9 +4,9 @@
 #include <libimages/debug_io.h>
 
 #include "../../io/scene_reader.h"
-#include "../../kernels/kernels.h"
 #include "../../utils/defines.h"
 #include "../../utils/utils.h"
+#include "../helpers/helpers.cuh"
 
 namespace cuda
 {

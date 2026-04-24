@@ -1,10 +1,7 @@
 #pragma once
 
-#include <cstddef>
-
 #include "../structs/bvh_node.h"
 #include "../structs/morton_code.h"
-#include "../structs/scene.h"
 
 namespace cuda::lbvh
 {

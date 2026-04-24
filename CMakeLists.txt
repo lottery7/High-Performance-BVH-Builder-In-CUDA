@@ -16,10 +16,11 @@ add_subdirectory(libs)
 set(SOURCES
         src/io/camera_reader.cpp
         src/io/scene_reader.cpp
-        src/experiments/nexus_hploc.cpp
 )
 
 set(CUDA_SOURCES
+        src/experiments/nexus_bvh.cu
+        src/experiments/nexus_bvh_wide.cu
         src/experiments/lbvh.cu
         src/experiments/hploc.cu
         src/experiments/hploc_wide.cu
@@ -29,12 +30,14 @@ set(CUDA_SOURCES
         src/kernels/ray_tracing/rt_lbvh.cu
         src/kernels/ray_tracing/rt_hploc.cu
         src/kernels/ray_tracing/rt_hploc_wide.cu
+        src/kernels/ray_tracing/rt_nexus_bvh_wide.cu
         src/kernels/helpers/fill.cu
         src/kernels/helpers/fill_indices.cu
         src/kernels/lbvh/lbvh.cu
-        src/kernels/h_ploc/hploc.cu
-        src/kernels/h_ploc/hploc_wide.cu
-        src/kernels/nexus_hploc/nexus_hploc.cu
+        src/kernels/hploc/hploc.cu
+        src/kernels/hploc/hploc_wide.cu
+        src/kernels/nexus_bvh/nexus_bvh.cu
+        src/kernels/nexus_bvh/nexus_bvh_wide.cu
         src/kernels/helpers/compute_motron_codes.cu
 )
 
@@ -64,7 +67,7 @@ set_property(TARGET ${PROJECT_NAME}_core PROPERTY CUDA_ARCHITECTURES 75)
 
 # CUDA-only опции компилятора
 target_compile_options(${PROJECT_NAME}_core PRIVATE
-        $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo --extended-lambda>
+        $<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false -lineinfo --extended-lambda>
 )
 
 target_compile_definitions(${PROJECT_NAME}_core PRIVATE

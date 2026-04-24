@@ -7,14 +7,15 @@
 #include <thrust/detail/sequence.inl>
 #include <vector>
 
-#include "../kernels/h_ploc/hploc.h"
-#include "../kernels/h_ploc/hploc_wide.h"
-#include "../kernels/kernels.h"
+#include "../kernels/helpers/helpers.cuh"
+#include "../kernels/hploc/hploc.cuh"
+#include "../kernels/hploc/hploc_wide.cuh"
 #include "../kernels/structs/wide_bvh_node.h"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
 #include "benchmark.h"
 #include "hploc_wide.h"
+#include "kernels/ray_tracing/rt.cuh"
 
 namespace
 {
@@ -109,6 +110,10 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
   const unsigned int height = fb.height;
   const unsigned int n_faces = scene.n_faces;
   const unsigned int max_binary_nodes = 2 * n_faces - 1;
+  size_t block_size = DEFAULT_GROUP_SIZE;
+  const unsigned int binary_bvh_root_index = 2 * n_faces - 2;
+  const unsigned long long root_task = cuda::hploc::pack_task(binary_bvh_root_index, 0);
+  constexpr unsigned int one = 1;
 
   BVHNode* d_binary_bvh = nullptr;
   MortonCode* d_morton_codes = nullptr;
@@ -212,7 +217,7 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
     CUDA_SAFE_CALL(cudaEventRecord(events.sort_stop, stream));
 
     CUDA_SAFE_CALL(cudaEventRecord(events.binary_build_start, stream));
-    constexpr size_t block_size = 128;
+    block_size = 128;
     cuda::hploc::build_kernel<<<div_ceil(n_faces, block_size), block_size, 0, stream>>>(
         d_parents,
         d_morton_codes,
@@ -223,13 +228,30 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
     CUDA_SAFE_CALL(cudaEventRecord(events.binary_build_stop, stream));
 
     CUDA_SAFE_CALL(cudaEventRecord(events.conversion_start, stream));
-    cuda::hploc::convert_to_wide<Arity>(stream, d_binary_bvh, d_wide_bvh, d_tasks, d_next_task, d_next_wide_node, n_faces);
+    block_size = 128;
+    CUDA_SAFE_CALL(cudaMemsetAsync(d_tasks, 0xFF, sizeof(unsigned long long) * n_faces, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(d_tasks, &root_task, sizeof(root_task), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(d_next_task, &one, sizeof(one), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(d_next_wide_node, &one, sizeof(one), cudaMemcpyHostToDevice, stream));
+    cuda::hploc::convert_to_wide_kernel<<<div_ceil(n_faces, block_size), block_size, 0, stream>>>(
+        d_binary_bvh,
+        d_wide_bvh,
+        reinterpret_cast<unsigned long long*>(d_tasks),
+        d_next_task,
+        d_next_wide_node,
+        n_faces);
     CUDA_SAFE_CALL(cudaEventRecord(events.conversion_stop, stream));
 
     fb.clear();
 
     CUDA_SAFE_CALL(cudaEventRecord(events.rt_start, stream));
-    cuda::rt_hploc_wide<Arity>(stream, width, height, scene.d_vertices, scene.d_faces, d_wide_bvh, fb.d_face_id, fb.d_ao, scene.d_camera);
+    cuda::hploc::rt_hploc_wide_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
+        scene.d_vertices,
+        scene.d_faces,
+        d_wide_bvh,
+        fb.d_face_id,
+        fb.d_ao,
+        scene.d_camera);
     CUDA_SAFE_CALL(cudaEventRecord(events.rt_stop, stream));
 
     CUDA_SAFE_CALL(cudaEventRecord(events.total_stop, stream));
@@ -266,7 +288,7 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
   std::cout << experiment_name << " fill indices times (in ms) - " << stats::median(fill_indices_times) << std::endl;
   std::cout << experiment_name << " compute morton codes times (in ms) - " << stats::median(morton_times) << std::endl;
   std::cout << experiment_name << " sort by key times (in ms) - " << stats::median(sort_times) << std::endl;
-  std::cout << experiment_name << " binary build kernel times (in ms) - " << stats::median(binary_build_times) << std::endl;
+  std::cout << experiment_name << " build kernel times (in ms) - " << stats::median(binary_build_times) << std::endl;
   std::cout << experiment_name << " conversion times (in ms) - " << stats::median(conversion_times) << std::endl;
   std::cout << experiment_name << " total build times (in ms) - " << stats::median(total_build_times) << std::endl;
   std::cout << experiment_name << " total build performance: " << build_mtris << " MTris/s" << std::endl;

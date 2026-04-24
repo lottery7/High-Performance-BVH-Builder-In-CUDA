@@ -5,11 +5,12 @@
 #include <thrust/detail/sequence.inl>
 #include <vector>
 
-#include "../kernels/kernels.h"
-#include "../kernels/lbvh/lbvh.h"
+#include "../kernels/helpers/helpers.cuh"
+#include "../kernels/lbvh/lbvh.cuh"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
 #include "benchmark.h"
+#include "kernels/ray_tracing/rt.cuh"
 #include "lbvh.h"
 
 #define EXPERIMENT_NAME "LBVH"
@@ -209,10 +210,7 @@ RayTracingResult run_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cud
     fb.clear();
 
     CUDA_SAFE_CALL(cudaEventRecord(events.rt_start, stream));
-    cuda::rt_lbvh(
-        stream,
-        width,
-        height,
+    cuda::lbvh::rt_lbvh_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene_gpu.d_vertices,
         scene_gpu.d_faces,
         d_bvh,
