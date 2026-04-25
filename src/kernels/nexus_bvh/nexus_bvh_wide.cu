@@ -1,8 +1,8 @@
-#include "nexus_bvh_wide.cuh"
+#include <device_launch_parameters.h>
 
 #include <cfloat>
 
-#include <device_launch_parameters.h>
+#include "nexus_bvh8.cuh"
 
 namespace
 {

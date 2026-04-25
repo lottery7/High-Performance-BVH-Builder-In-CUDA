@@ -5,15 +5,15 @@
 #include <vector>
 
 #include "../kernels/helpers/helpers.cuh"
-#include "../kernels/nexus_bvh/nexus_bvh.cuh"
+#include "../kernels/nexus_bvh/nexus_bvh2.cuh"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
 #include "benchmark.h"
-#include "kernels/hploc/hploc.cuh"
+#include "kernels/hploc/hploc_bvh2.cuh"
 #include "kernels/ray_tracing/rt.cuh"
-#include "nexus_bvh.h"
+#include "nexus_bvh2.h"
 
-#define EXPERIMENT_NAME "NexusBVH H-PLOC"
+#define EXPERIMENT_NAME "NexusBVH BVH2"
 
 namespace
 {
@@ -85,7 +85,7 @@ namespace
   }
 }  // namespace
 
-RayTracingResult run_nexus_bvh(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
+RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
 {
   std::cout << "\n=== Experiment: " EXPERIMENT_NAME << std::endl;
 
@@ -94,10 +94,10 @@ RayTracingResult run_nexus_bvh(cudaStream_t stream, const cuda::Scene& scene, cu
   const unsigned int n_faces = scene.n_faces;
   const unsigned int max_nodes = 2 * n_faces - 1;
 
-  BVHNode* d_bvh = nullptr;
+  BVH2Node* d_bvh = nullptr;
   cuda::nexus_bvh::Workspace workspace;
 
-  CUDA_SAFE_CALL(cudaMallocAsync(&d_bvh, sizeof(BVHNode) * max_nodes, stream));
+  CUDA_SAFE_CALL(cudaMallocAsync(&d_bvh, sizeof(BVH2Node) * max_nodes, stream));
   cuda::nexus_bvh::allocate_workspace(stream, workspace, n_faces);
   CUDA_SYNC_STREAM(stream);
 

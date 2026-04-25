@@ -14,7 +14,6 @@
 #define AO_SAMPLES 8
 #define NO_FACE_ID (-1)
 #define NO_AMBIENT_OCCLUSION (-1.0f)
-#define NO_NODE_ID 0xFFFFFFFFu
 #define INVALID_INDEX 0xFFFFFFFFu
 
 #define RASSERT_ENABLED 0  // enable for debug, disable before performance evaluation/profiling/commiting

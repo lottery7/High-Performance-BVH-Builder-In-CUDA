@@ -1,8 +1,8 @@
 #include <cooperative_groups/details/helpers.h>
 #include <cuda_runtime.h>
-#include <float.h>
 
 #include "../../utils/utils.h"
+#include "../helpers/geometry_helpers.cu"
 #include "../helpers/helpers.cuh"
 #include "../structs/aabb.h"
 #include "../structs/morton_code.h"
@@ -34,7 +34,7 @@ __device__ __forceinline__ static unsigned int load_cluster_id(
     unsigned int start,
     unsigned int end,
     int offset,
-    const unsigned int* cluster_ids,
+    const unsigned int* __restrict__ cluster_ids,
     unsigned int& cluster_id)
 {
   curassert(start <= end, 2349005);
@@ -61,11 +61,11 @@ __device__ __forceinline__ static AABB shfl_sync(unsigned mask, AABB aabb, int s
 
 __device__ static unsigned int merge_clusters_create_bvh2_node(
     unsigned int warp_n_clusters,
-    unsigned int nn_lane_id,  // nearest neighbor's lane id
+    unsigned int nn_lane_id,
     unsigned int& cluster_id,
     AABB& cluster_aabb,
-    unsigned int* n_clusters,
-    BVHNode* nodes)
+    unsigned int* __restrict__ n_clusters,
+    BVH2Node* __restrict__ nodes)
 {
   unsigned int lane_id = get_lane_id();
   // lane_id ближайшего соседа ближайшего соседа
@@ -88,7 +88,7 @@ __device__ static unsigned int merge_clusters_create_bvh2_node(
 
   if (should_merge) {
     cluster_aabb = AABB::union_of(cluster_aabb, neighbor_cluster_aabb);
-    BVHNode node{cluster_aabb, cluster_id, neighbor_cluster_id};
+    BVH2Node node{cluster_aabb, cluster_id, neighbor_cluster_id};
     // Число потоков ворпа с id меньше нашего, которые тоже будут делать merge
     cluster_id = cluster_start_id + __popc(merge_mask & (1u << lane_id) - 1);
     nodes[cluster_id] = node;
@@ -144,9 +144,9 @@ __device__ static void ploc_merge(
     unsigned int right,
     unsigned int split,
     bool is_final,
-    BVHNode* nodes,
-    unsigned int* cluster_ids,
-    unsigned int* n_clusters)
+    BVH2Node* __restrict__ nodes,
+    unsigned int* __restrict__ cluster_ids,
+    unsigned int* __restrict__ n_clusters)
 {
   // Получаем границы узла из target_lane_id
   unsigned int l_start = __shfl_sync(ALL_THREADS, left, target_lane_id);
@@ -182,18 +182,14 @@ __device__ static void ploc_merge(
   __threadfence();  // для остальных ворпов
 }
 
-__device__ __forceinline__ static float fminf3(float x, float y, float z) { return fminf(fminf(x, y), z); }
-
-__device__ __forceinline__ static float fmaxf3(float x, float y, float z) { return fmaxf(fmaxf(x, y), z); }
-
 namespace cuda::hploc
 {
   __global__ void build_kernel(
-      unsigned int* parents,
-      const MortonCode* morton_codes,
-      BVHNode* nodes,
-      unsigned int* cluster_ids,
-      unsigned int* n_clusters,
+      unsigned int* __restrict__ parents,
+      const MortonCode* __restrict__ morton_codes,
+      BVH2Node* __restrict__ nodes,
+      unsigned int* __restrict__ cluster_ids,
+      unsigned int* __restrict__ n_clusters,
       unsigned int n_faces)
   {
     const unsigned int index = blockDim.x * blockIdx.x + threadIdx.x;
@@ -253,28 +249,30 @@ namespace cuda::hploc
       }
     }
   }
-  __global__ void build_leaves_nodes_kernel(const unsigned int* faces, unsigned int n_faces, const float* vertices, BVHNode* nodes)
+
+  __global__ void build_leaves_kernel(
+      const unsigned int* __restrict__ faces,
+      const unsigned int n_faces,
+      const float* __restrict__ vertices,
+      BVH2Node* __restrict__ nodes,
+      AABB* __restrict__ primitives_aabb,
+      unsigned int* __restrict__ clusters)
   {
     const unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index >= n_faces) return;
 
-    unsigned int f0 = faces[3 * index + 0];
-    unsigned int f1 = faces[3 * index + 1];
-    unsigned int f2 = faces[3 * index + 2];
+    const unsigned int base_index = 3 * index;
+    const unsigned int f0 = faces[base_index + 0];
+    const unsigned int f1 = faces[base_index + 1];
+    const unsigned int f2 = faces[base_index + 2];
 
-    float3 v0 = {vertices[3 * f0 + 0], vertices[3 * f0 + 1], vertices[3 * f0 + 2]};
-    float3 v1 = {vertices[3 * f1 + 0], vertices[3 * f1 + 1], vertices[3 * f1 + 2]};
-    float3 v2 = {vertices[3 * f2 + 0], vertices[3 * f2 + 1], vertices[3 * f2 + 2]};
+    const float3 v0 = load_vertex(vertices, f0);
+    const float3 v1 = load_vertex(vertices, f1);
+    const float3 v2 = load_vertex(vertices, f2);
 
-    AABB aabb{
-        fminf3(v0.x, v1.x, v2.x),
-        fminf3(v0.y, v1.y, v2.y),
-        fminf3(v0.z, v1.z, v2.z),
-        fmaxf3(v0.x, v1.x, v2.x),
-        fmaxf3(v0.y, v1.y, v2.y),
-        fmaxf3(v0.z, v1.z, v2.z)};
-
-    BVHNode node{aabb, INVALID_INDEX, index};
-    nodes[index] = node;
+    AABB aabb = AABB::from_triangle(v0, v1, v2);
+    nodes[index] = {aabb, INVALID_INDEX, index};
+    clusters[index] = index;
+    primitives_aabb[index] = aabb;
   }
 }  // namespace cuda::hploc

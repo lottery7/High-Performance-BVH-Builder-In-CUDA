@@ -5,11 +5,24 @@
 
 namespace cuda::lbvh
 {
-  __global__ void build_bvh_kernel(BVHNode* bvh, MortonCode* morton_codes, unsigned int n_faces);
+  __global__ void build_bvh_kernel(
+      BVH2Node* __restrict__ nodes,
+      MortonCode* __restrict__ morton_codes,
+      unsigned int* __restrict__ parents,
+      const AABB* __restrict__ primitives_aabb,
+      const unsigned int* __restrict__ primitives,
+      unsigned int n_faces);
 
-  __global__ void build_aabb_leaves_kernel(BVHNode* bvh, unsigned int* faces, float* vertices, unsigned int* indices, unsigned int n_faces);
+  __global__ void build_primitives_aabb_kernel(
+      const unsigned int* __restrict__ faces,
+      unsigned int n_faces,
+      const float* __restrict__ vertices,
+      unsigned int* __restrict__ primitive_indices,
+      AABB* __restrict__ primitives_aabb);
 
-  __global__ void build_aabb_kernel(BVHNode* bvh, unsigned int* parents, unsigned int* flags, unsigned int n_faces);
-
-  __global__ void compute_parents_kernel(BVHNode* bvh, unsigned int* parents, unsigned int n_faces);
+  __global__ void build_internal_nodes_aabb_kernel(
+      BVH2Node* __restrict__ nodes,
+      unsigned int* __restrict__ parents,
+      unsigned int* __restrict__ flags,
+      unsigned int n_faces);
 }  // namespace cuda::lbvh

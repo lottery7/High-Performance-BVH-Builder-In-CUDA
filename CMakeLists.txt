@@ -19,10 +19,10 @@ set(SOURCES
 )
 
 set(CUDA_SOURCES
-        src/experiments/nexus_bvh.cu
-        src/experiments/nexus_bvh_wide.cu
+        src/experiments/nexus_bvh2.cu
+        src/experiments/nexus_bvh8.cu
         src/experiments/lbvh.cu
-        src/experiments/hploc.cu
+        src/experiments/hploc_bvh2.cu
         src/experiments/hploc_wide.cu
         src/kernels/helpers/camera_helpers.cuh
         src/kernels/helpers/geometry_helpers.cu
@@ -30,15 +30,17 @@ set(CUDA_SOURCES
         src/kernels/ray_tracing/rt_lbvh.cu
         src/kernels/ray_tracing/rt_hploc.cu
         src/kernels/ray_tracing/rt_hploc_wide.cu
-        src/kernels/ray_tracing/rt_nexus_bvh_wide.cu
+        src/kernels/ray_tracing/rt_hploc_bvh8.cu
         src/kernels/helpers/fill.cu
         src/kernels/helpers/fill_indices.cu
         src/kernels/lbvh/lbvh.cu
-        src/kernels/hploc/hploc.cu
+        src/kernels/hploc/hploc_bvh2.cu
         src/kernels/hploc/hploc_wide.cu
         src/kernels/nexus_bvh/nexus_bvh.cu
         src/kernels/nexus_bvh/nexus_bvh_wide.cu
-        src/kernels/helpers/compute_motron_codes.cu
+        src/kernels/helpers/compute_morton_codes.cu
+        src/kernels/helpers/compute_scene_aabb.cu
+        src/kernels/helpers/sort_pairs.cu
 )
 
 set(LIBRARIES
@@ -95,8 +97,3 @@ endif ()
 # ---- Executable ----
 add_executable(run_experiments src/main.cpp)
 target_link_libraries(run_experiments PRIVATE ${PROJECT_NAME}_core)
-
-add_executable(hploc_topology_tests src/hploc_topology_tests.cu)
-target_link_libraries(hploc_topology_tests PRIVATE ${PROJECT_NAME}_core)
-
-add_test(NAME hploc_topology_tests COMMAND hploc_topology_tests)

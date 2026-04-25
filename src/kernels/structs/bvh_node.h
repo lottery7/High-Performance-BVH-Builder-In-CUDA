@@ -3,9 +3,7 @@
 #include "aabb.h"
 #include "utils/defines.h"
 
-// POD AABB struct with identical layout in C++ / CUDA / OpenCL / Vulkan C-like code.
-// Uses only scalar floats to avoid float3/vector alignment differences.
-struct BVHNode {
+struct BVH2Node {
   AABB aabb;
   unsigned int left_child_index;
   unsigned int right_child_index;
@@ -15,4 +13,4 @@ struct BVHNode {
 
 /* ---------------- Host-only layout checks ---------------- */
 static_assert(sizeof(unsigned int) == 4, "unsigned int must be 32-bit");
-static_assert(sizeof(BVHNode) == sizeof(AABB) + 2 * 4, "BVHNode size mismatch");
+static_assert(sizeof(BVH2Node) == sizeof(AABB) + 2 * 4, "BVH2Node size mismatch");

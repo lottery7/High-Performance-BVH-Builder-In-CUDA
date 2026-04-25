@@ -4,7 +4,7 @@
 
 #include "../../utils/defines.h"
 #include "../../utils/utils.h"
-#include "nexus_bvh.cuh"
+#include "nexus_bvh2.cuh"
 
 namespace
 {
@@ -404,7 +404,7 @@ namespace cuda::nexus_bvh
         cudaStream_t stream,
         unsigned int* d_faces,
         float* d_vertices,
-        BVHNode* d_nodes,
+        BVH2Node* d_nodes,
         Workspace& workspace,
         unsigned int n_faces,
         BuildTimings* timings)
@@ -537,7 +537,7 @@ namespace cuda::nexus_bvh
     workspace = {};
   }
 
-  void build(cudaStream_t stream, unsigned int* d_faces, float* d_vertices, BVHNode* d_nodes, Workspace& workspace, unsigned int n_faces)
+  void build(cudaStream_t stream, unsigned int* d_faces, float* d_vertices, BVH2Node* d_nodes, Workspace& workspace, unsigned int n_faces)
   {
     build_impl(stream, d_faces, d_vertices, d_nodes, workspace, n_faces, nullptr);
   }
@@ -546,7 +546,7 @@ namespace cuda::nexus_bvh
       cudaStream_t stream,
       unsigned int* d_faces,
       float* d_vertices,
-      BVHNode* d_nodes,
+      BVH2Node* d_nodes,
       Workspace& workspace,
       unsigned int n_faces,
       BuildTimings& timings)

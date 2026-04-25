@@ -9,15 +9,15 @@
 namespace cuda
 {
 
-  __global__ void compute_mortons_kernel(AABB scene_aabb, unsigned int *faces, float *vertices, MortonCode *morton_codes, unsigned int n_faces)
+  __global__ void compute_morton_codes_kernel(const AABB *scene_aabb, unsigned int *faces, float *vertices, MortonCode *morton_codes, unsigned int n_faces)
   {
     unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index >= n_faces) return;
 
     const float eps = 1e-9f;
-    float dx = fmaxf(scene_aabb.max_x - scene_aabb.min_x, eps);
-    float dy = fmaxf(scene_aabb.max_y - scene_aabb.min_y, eps);
-    float dz = fmaxf(scene_aabb.max_z - scene_aabb.min_z, eps);
+    float dx = fmaxf(scene_aabb->max_x - scene_aabb->min_x, eps);
+    float dy = fmaxf(scene_aabb->max_y - scene_aabb->min_y, eps);
+    float dz = fmaxf(scene_aabb->max_z - scene_aabb->min_z, eps);
 
     unsigned int f0 = faces[3 * index + 0];
     unsigned int f1 = faces[3 * index + 1];
@@ -38,9 +38,9 @@ namespace cuda
     const float cy = 0.5f * (min_y + max_y);
     const float cz = 0.5f * (min_z + max_z);
 
-    float nx = fminf(fmaxf((cx - scene_aabb.min_x) / dx, 0.0f), 1.0f);
-    float ny = fminf(fmaxf((cy - scene_aabb.min_y) / dy, 0.0f), 1.0f);
-    float nz = fminf(fmaxf((cz - scene_aabb.min_z) / dz, 0.0f), 1.0f);
+    float nx = fminf(fmaxf((cx - scene_aabb->min_x) / dx, 0.0f), 1.0f);
+    float ny = fminf(fmaxf((cy - scene_aabb->min_y) / dy, 0.0f), 1.0f);
+    float nz = fminf(fmaxf((cz - scene_aabb->min_z) / dz, 0.0f), 1.0f);
 
     morton_codes[index] = get_morton_code(nx, ny, nz);
   }

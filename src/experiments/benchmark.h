@@ -1,13 +1,18 @@
 #pragma once
 
+#pragma once
+
+#include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
 #include <libbase/stats.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -55,7 +60,7 @@ class CudaEventTimer
   CudaEventTimer& operator=(const CudaEventTimer&) = delete;
 
   template <typename F>
-  double measure(cudaStream_t stream, F&& fn)
+  float measure(cudaStream_t stream, F&& fn)
   {
     CUDA_SAFE_CALL(cudaEventRecord(start_, stream));
     std::forward<F>(fn)();
@@ -64,7 +69,7 @@ class CudaEventTimer
 
     float elapsed_ms = 0.0f;
     CUDA_SAFE_CALL(cudaEventElapsedTime(&elapsed_ms, start_, stop_));
-    return static_cast<double>(elapsed_ms);
+    return elapsed_ms;
   }
 
  private:
@@ -135,4 +140,162 @@ namespace benchmark
 
     return result;
   }
+
+  class GpuStageProfiler
+  {
+   public:
+    enum class Stage : std::size_t {
+      TotalBuild,
+      Leaves,
+      MortonCodes,
+      Sort,
+      Build,
+      RayTracing,
+      Count,
+      Conversion,
+      FillIndices,
+      Hierarchy,
+      SceneAABB,
+      InternalNodesAABB,
+      PrimitivesAABB,
+      Total,
+      _NumStages,
+    };
+
+    struct EventPair {
+      cudaEvent_t start = nullptr;
+      cudaEvent_t stop = nullptr;
+
+      EventPair()
+      {
+        CUDA_SAFE_CALL(cudaEventCreate(&start));
+        CUDA_SAFE_CALL(cudaEventCreate(&stop));
+      }
+
+      ~EventPair()
+      {
+        if (start) CUDA_SAFE_CALL(cudaEventDestroy(start));
+        if (stop) CUDA_SAFE_CALL(cudaEventDestroy(stop));
+      }
+
+      EventPair(const EventPair&) = delete;
+      EventPair& operator=(const EventPair&) = delete;
+
+      EventPair(EventPair&& other) noexcept : start(other.start), stop(other.stop)
+      {
+        other.start = nullptr;
+        other.stop = nullptr;
+      }
+
+      EventPair& operator=(EventPair&& other) noexcept
+      {
+        if (this != &other) {
+          if (start) CUDA_SAFE_CALL(cudaEventDestroy(start));
+          if (stop) CUDA_SAFE_CALL(cudaEventDestroy(stop));
+
+          start = other.start;
+          stop = other.stop;
+          other.start = nullptr;
+          other.stop = nullptr;
+        }
+        return *this;
+      }
+
+      float elapsed_ms() const
+      {
+        float ms = 0.0f;
+        CUDA_SAFE_CALL(cudaEventElapsedTime(&ms, start, stop));
+        return ms;
+      }
+    };
+
+    struct StageData {
+      EventPair events;
+      std::vector<double> samples;
+    };
+
+    explicit GpuStageProfiler(cudaStream_t stream, std::size_t reserve_samples = 0) : stream_(stream)
+    {
+      for (auto& s : stages_) {
+        s.samples.reserve(reserve_samples);
+      }
+    }
+
+    GpuStageProfiler(const GpuStageProfiler&) = delete;
+    GpuStageProfiler& operator=(const GpuStageProfiler&) = delete;
+    GpuStageProfiler(GpuStageProfiler&&) = delete;
+    GpuStageProfiler& operator=(GpuStageProfiler&&) = delete;
+
+    void record_start(Stage stage) { CUDA_SAFE_CALL(cudaEventRecord(data(stage).events.start, stream_)); }
+
+    void record_stop(Stage stage) { CUDA_SAFE_CALL(cudaEventRecord(data(stage).events.stop, stream_)); }
+
+    double elapsed_ms(Stage stage) const { return data(stage).events.elapsed_ms(); }
+
+    void collect(Stage stage) { data(stage).samples.push_back(elapsed_ms(stage)); }
+
+    void collect(std::initializer_list<Stage> stages)
+    {
+      for (Stage s : stages) {
+        collect(s);
+      }
+    }
+
+    const std::vector<double>& samples(Stage stage) const { return data(stage).samples; }
+
+    double median(Stage stage) const { return stats::median(data(stage).samples); }
+
+    void cuda_sync_event(Stage stage) const { CUDA_SAFE_CALL(cudaEventSynchronize(data(stage).events.stop)); }
+
+    cudaStream_t stream() const { return stream_; }
+
+    static constexpr std::string_view name(Stage stage)
+    {
+      switch (stage) {
+        case Stage::Total:
+          return "total";
+        case Stage::TotalBuild:
+          return "total build";
+        case Stage::SceneAABB:
+          return "scene aabb";
+        case Stage::Leaves:
+          return "leaves";
+        case Stage::MortonCodes:
+          return "morton";
+        case Stage::Sort:
+          return "sort";
+        case Stage::Build:
+          return "build";
+        case Stage::RayTracing:
+          return "rt";
+        case Stage::Count:
+          return "count";
+        case Stage::Conversion:
+          return "conversion";
+        case Stage::FillIndices:
+          return "fill indices";
+        case Stage::Hierarchy:
+          return "hierarchy";
+        case Stage::InternalNodesAABB:
+          return "internal nodes aabb";
+        default:
+          return "unknown";
+      }
+    }
+
+    void print(Stage stage, const char* prefix) const
+    {
+      std::cout << prefix << " " << name(stage) << " times (in ms) - " << median(stage) << std::endl;
+    }
+
+   private:
+    static constexpr std::size_t index(Stage s) { return static_cast<std::size_t>(s); }
+
+    StageData& data(Stage s) { return stages_[index(s)]; }
+
+    const StageData& data(Stage s) const { return stages_[index(s)]; }
+
+    cudaStream_t stream_ = nullptr;
+    std::array<StageData, static_cast<std::size_t>(Stage::_NumStages)> stages_;
+  };
 }  // namespace benchmark

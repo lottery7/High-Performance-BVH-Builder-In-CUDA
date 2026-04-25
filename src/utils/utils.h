@@ -2,7 +2,9 @@
 
 #include <cuda_runtime_api.h>
 
+#include <iostream>
 #include <string>
+#include <vector>
 
 #include "../experiments/common.h"
 #include "../kernels/structs/bvh_node.h"
@@ -71,13 +73,11 @@ inline size_t div_ceil(size_t a, size_t b)
   return (a + b - 1) / b;
 }
 
-inline size_t compute_grid(size_t n) { return std::min(div_ceil(n, static_cast<size_t>(DEFAULT_GROUP_SIZE)), static_cast<size_t>(MAX_GRID_SIZE)); }
+inline size_t compute_grid(size_t n) { return div_ceil(n, static_cast<size_t>(DEFAULT_GROUP_SIZE)); }
 
 inline dim3 compute_grid(size_t x, size_t y)
 {
-  return dim3(
-      std::min(div_ceil(x, static_cast<size_t>(DEFAULT_GROUP_SIZE_X)), static_cast<size_t>(MAX_GRID_SIZE_X)),
-      std::min(div_ceil(y, static_cast<size_t>(DEFAULT_GROUP_SIZE_Y)), static_cast<size_t>(MAX_GRID_SIZE_Y)));
+  return dim3(div_ceil(x, static_cast<size_t>(DEFAULT_GROUP_SIZE_X)), div_ceil(y, static_cast<size_t>(DEFAULT_GROUP_SIZE_Y)));
 }
 
 template <typename T>
@@ -97,7 +97,7 @@ size_t count_diffs(const TypedImage<T>& a, const TypedImage<T>& b, T threshold)
 {
   rassert(a.channels() == 1, 5634532413241, a.channels());
   rassert(a.channels() == b.channels(), 562435231453243);
-  rassert(a.width() == b.width() && a.height() == b.height(), 562435231453243);
+  rassert(a.width() == b.width() && a.height() == b.height(), 562435231412243);
   size_t count = 0;
 #pragma omp parallel for reduction(+ : count)
   for (ptrdiff_t j = 0; j < a.height(); ++j)
@@ -125,11 +125,17 @@ inline void validate_against_ground_truth(
   rassert(face_errors < width * height / 100 * max_errors_percents, 3453415123546587ULL, face_errors, to_percent(face_errors, width * height));
 }
 
-inline void report_sah(const std::vector<BVHNode>& bvh_nodes)
+inline void report_sah(const std::vector<BVH2Node>& bvh_nodes)
 {
   const int n_total = bvh_nodes.size();
   const int n_faces = (n_total + 1) / 2;
   const unsigned int leaves_start = n_faces - 1;
+
+  float root_area = bvh_nodes[0].aabb.surface_area();
+  if (!std::isfinite(root_area) || root_area <= 0.0f) {
+    std::cout << "Invalid root area: " << root_area << std::endl;
+    return;
+  }
 
   for (int i = 0; i < n_total; ++i) {
     auto& n = bvh_nodes[i];
@@ -152,15 +158,15 @@ inline void report_sah(const std::vector<BVHNode>& bvh_nodes)
   std::cout << "SAH = " << sah << " (C_trav=" << C_trav << ", C_isect=" << C_isect << ")" << std::endl;
 }
 
-inline void report_sah(cudaStream_t stream, const BVHNode* d_bvh, unsigned int n_nodes)
+inline void report_sah(cudaStream_t stream, const BVH2Node* d_bvh, unsigned int n_nodes)
 {
-  std::vector<BVHNode> h_nodes(n_nodes);
-  CUDA_SAFE_CALL(cudaMemcpyAsync(h_nodes.data(), d_bvh, sizeof(BVHNode) * n_nodes, cudaMemcpyDeviceToHost, stream));
+  std::vector<BVH2Node> h_nodes(n_nodes);
+  CUDA_SAFE_CALL(cudaMemcpyAsync(h_nodes.data(), d_bvh, sizeof(BVH2Node) * n_nodes, cudaMemcpyDeviceToHost, stream));
   CUDA_SYNC_STREAM(stream);
   report_sah(h_nodes);
 }
 
-inline void report_sah_hploc(const std::vector<BVHNode>& hploc_nodes, unsigned int n_faces)
+inline void report_sah_hploc(const std::vector<BVH2Node>& hploc_nodes, unsigned int n_faces)
 {
   for (int i = 0; i < hploc_nodes.size(); ++i) {
     auto& n = hploc_nodes[i];
@@ -191,10 +197,10 @@ inline void report_sah_hploc(const std::vector<BVHNode>& hploc_nodes, unsigned i
   std::cout << "SAH = " << sah << " (C_trav=" << C_trav << ", C_isect=" << C_isect << ")" << std::endl;
 }
 
-inline void report_sah_hploc(cudaStream_t stream, const BVHNode* d_bvh, unsigned int n_nodes, unsigned int n_faces)
+inline void report_sah_hploc(cudaStream_t stream, const BVH2Node* d_bvh, unsigned int n_nodes, unsigned int n_faces)
 {
-  std::vector<BVHNode> h_nodes(n_nodes);
-  CUDA_SAFE_CALL(cudaMemcpyAsync(h_nodes.data(), d_bvh, sizeof(BVHNode) * n_nodes, cudaMemcpyDeviceToHost, stream));
+  std::vector<BVH2Node> h_nodes(n_nodes);
+  CUDA_SAFE_CALL(cudaMemcpyAsync(h_nodes.data(), d_bvh, sizeof(BVH2Node) * n_nodes, cudaMemcpyDeviceToHost, stream));
   CUDA_SYNC_STREAM(stream);
   report_sah_hploc(h_nodes, n_faces);
 }

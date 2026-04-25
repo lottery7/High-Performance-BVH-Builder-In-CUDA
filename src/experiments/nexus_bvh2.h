@@ -6,4 +6,4 @@
 #include "../kernels/structs/scene.h"
 #include "common.h"
 
-RayTracingResult run_nexus_bvh_wide(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir);
+RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir);

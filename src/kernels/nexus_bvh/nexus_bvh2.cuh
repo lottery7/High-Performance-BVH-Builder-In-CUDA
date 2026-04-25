@@ -11,7 +11,7 @@ namespace cuda::nexus_bvh
 {
   struct BuildState {
     AABB* scene_bounds = nullptr;
-    BVHNode* nodes = nullptr;
+    BVH2Node* nodes = nullptr;
     unsigned int* cluster_indices = nullptr;
     unsigned int* parent_indices = nullptr;
     unsigned int prim_count = 0;
@@ -48,7 +48,7 @@ namespace cuda::nexus_bvh
 
   __global__ void build_bvh2_kernel(BuildState build_state, const unsigned int* morton_codes);
 
-  void build(cudaStream_t stream, unsigned int* d_faces, float* d_vertices, BVHNode* d_nodes, Workspace& workspace, unsigned int n_faces);
+  void build(cudaStream_t stream, unsigned int* d_faces, float* d_vertices, BVH2Node* d_nodes, Workspace& workspace, unsigned int n_faces);
 
-  void build(cudaStream_t stream, unsigned int* d_faces, float* d_vertices, BVHNode* d_nodes, Workspace& workspace, unsigned int n_faces, BuildTimings& timings);
+  void build(cudaStream_t stream, unsigned int* d_faces, float* d_vertices, BVH2Node* d_nodes, Workspace& workspace, unsigned int n_faces, BuildTimings& timings);
 }  // namespace cuda::nexus_bvh

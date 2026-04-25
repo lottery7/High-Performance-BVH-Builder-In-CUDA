@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cuda_runtime.h>
+
+#include <cstddef>
 #include <string>
 #include <vector>
 

@@ -10,7 +10,6 @@
 struct SceneGeometry {
   std::vector<point3f> vertices;  // each vertex is (x, y, z)
   std::vector<point3u> faces;     // each face is (v0, v1, v2) - indices of three vertices used in a triangle
-  AABB aabb;
 };
 
 // Loads geometry from Wavefront OBJ (supports v, f; polygons are fan-triangulated)

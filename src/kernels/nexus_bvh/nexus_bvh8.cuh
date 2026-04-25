@@ -61,7 +61,7 @@ namespace cuda::nexus_bvh_wide
 }
 
 static_assert(sizeof(cuda::nexus_bvh_wide::AABB) == sizeof(::AABB), "Nexus wide AABB layout mismatch");
-static_assert(sizeof(cuda::nexus_bvh_wide::BVH2Node) == sizeof(BVHNode), "Nexus wide BVH2 node layout mismatch");
+static_assert(sizeof(cuda::nexus_bvh_wide::BVH2Node) == sizeof(BVH2Node), "Nexus wide BVH2 node layout mismatch");
 static_assert(
     sizeof(cuda::nexus_bvh_wide::BVH8NodeExplicit) == sizeof(cuda::nexus_bvh_wide::BVH8Node),
     "Nexus wide BVH8 node layout mismatch");

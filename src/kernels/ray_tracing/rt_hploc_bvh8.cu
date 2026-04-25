@@ -6,7 +6,7 @@
 #include "../helpers/geometry_helpers.cu"
 #include "../helpers/helpers.cuh"
 #include "../helpers/random_helpers.cu"
-#include "../nexus_bvh/nexus_bvh_wide.cuh"
+#include "../hploc/hploc_wide.cuh"
 #include "../structs/camera.h"
 
 namespace
@@ -17,7 +17,7 @@ namespace
     return __popc(x & mask);
   }
 
-  __device__ __forceinline__ AABB decode_child_aabb(const cuda::nexus_bvh_wide::BVH8NodeExplicit& node, unsigned int slot)
+  __device__ __forceinline__ AABB decode_child_aabb(const cuda::hploc::BVH8NodeExplicit& node, unsigned int slot)
   {
     const float ex = __uint_as_float(static_cast<unsigned int>(node.e[0]) << 23);
     const float ey = __uint_as_float(static_cast<unsigned int>(node.e[1]) << 23);
@@ -33,13 +33,13 @@ namespace
     return child_aabb;
   }
 
-  __device__ __forceinline__ unsigned int decode_internal_child_index(const cuda::nexus_bvh_wide::BVH8NodeExplicit& node, unsigned int slot)
+  __device__ __forceinline__ unsigned int decode_internal_child_index(const cuda::hploc::BVH8NodeExplicit& node, unsigned int slot)
   {
     return node.childBaseIdx + count_bits_below(node.imask, slot);
   }
 
   __device__ __forceinline__ unsigned int decode_leaf_primitive_index(
-      const cuda::nexus_bvh_wide::BVH8NodeExplicit& node,
+      const cuda::hploc::BVH8NodeExplicit& node,
       unsigned int slot,
       const unsigned int* prim_idx)
   {
@@ -50,10 +50,10 @@ namespace
 
 namespace cuda::hploc
 {
-  static __device__ bool nexus_bvh_wide_closest_hit(
+  static __device__ bool hploc_wide8_closest_hit(
       const float3& orig,
       const float3& dir,
-      const cuda::nexus_bvh_wide::BVH8Node* nodes,
+      const cuda::hploc::BVH8Node* nodes,
       const unsigned int* prim_idx,
       const float* vertices,
       const unsigned int* faces,
@@ -73,7 +73,7 @@ namespace cuda::hploc
 
     while (sp > 0) {
       const int node_idx = stack[--sp];
-      const auto& node = reinterpret_cast<const cuda::nexus_bvh_wide::BVH8NodeExplicit&>(nodes[node_idx]);
+      const auto& node = reinterpret_cast<const BVH8NodeExplicit&>(nodes[node_idx]);
 
       unsigned int hit_indices[8];
       float hit_t_near[8];
@@ -90,10 +90,10 @@ namespace cuda::hploc
         const bool internal = (node.imask & (1u << slot)) != 0u;
         if (!internal) {
           const unsigned int tri_idx = decode_leaf_primitive_index(node, slot, prim_idx);
-          const uint3 face = loadFace(faces, tri_idx);
-          const float3 v0 = loadVertex(vertices, face.x);
-          const float3 v1 = loadVertex(vertices, face.y);
-          const float3 v2 = loadVertex(vertices, face.z);
+          const uint3 face = load_face(faces, tri_idx);
+          const float3 v0 = load_vertex(vertices, face.x);
+          const float3 v1 = load_vertex(vertices, face.y);
+          const float3 v2 = load_vertex(vertices, face.z);
 
           float t, u, v;
           if (intersect_ray_triangle(orig, dir, v0, v1, v2, t_min, best_t, false, t, u, v)) {
@@ -127,12 +127,12 @@ namespace cuda::hploc
     return hit;
   }
 
-  static __device__ bool nexus_bvh_wide_any_hit_from(
+  static __device__ bool hploc_wide8_any_hit_from(
       const float3& orig,
       const float3& dir,
       const float* vertices,
       const unsigned int* faces,
-      const cuda::nexus_bvh_wide::BVH8Node* nodes,
+      const cuda::hploc::BVH8Node* nodes,
       const unsigned int* prim_idx,
       int ignore_face)
   {
@@ -146,7 +146,7 @@ namespace cuda::hploc
 
     while (sp > 0) {
       const int node_idx = stack[--sp];
-      const auto& node = reinterpret_cast<const cuda::nexus_bvh_wide::BVH8NodeExplicit&>(nodes[node_idx]);
+      const auto& node = reinterpret_cast<const BVH8NodeExplicit&>(nodes[node_idx]);
 
       for (unsigned int slot = 0; slot < 8; ++slot) {
         if (node.meta[slot] == 0) continue;
@@ -161,10 +161,10 @@ namespace cuda::hploc
           const unsigned int tri_idx = decode_leaf_primitive_index(node, slot, prim_idx);
           if (static_cast<int>(tri_idx) == ignore_face) continue;
 
-          const uint3 face = loadFace(faces, tri_idx);
-          const float3 v0 = loadVertex(vertices, face.x);
-          const float3 v1 = loadVertex(vertices, face.y);
-          const float3 v2 = loadVertex(vertices, face.z);
+          const uint3 face = load_face(faces, tri_idx);
+          const float3 v0 = load_vertex(vertices, face.x);
+          const float3 v1 = load_vertex(vertices, face.y);
+          const float3 v2 = load_vertex(vertices, face.z);
 
           float t, u, v;
           if (intersect_ray_triangle(orig, dir, v0, v1, v2, t_min, best_t, false, t, u, v)) return true;
@@ -179,10 +179,10 @@ namespace cuda::hploc
     return false;
   }
 
-  __global__ void rt_nexus_bvh_wide_kernel(
+  __global__ void rt_hploc_bvh8_kernel(
       const float* vertices,
       const unsigned int* faces,
-      const cuda::nexus_bvh_wide::BVH8Node* bvh_nodes,
+      const BVH8Node* bvh_nodes,
       const unsigned int* prim_idx,
       int* face_id,
       float* ambient_occlusion,
@@ -202,17 +202,17 @@ namespace cuda::hploc
     float v_best = 0.0f;
     int face_id_best = -1;
 
-    nexus_bvh_wide_closest_hit(ray_origin, ray_direction, bvh_nodes, prim_idx, vertices, faces, 1e-6f, t_best, face_id_best, u_best, v_best);
+    hploc_wide8_closest_hit(ray_origin, ray_direction, bvh_nodes, prim_idx, vertices, faces, 1e-6f, t_best, face_id_best, u_best, v_best);
 
     const unsigned int idx = j * camera->K.width + i;
     face_id[idx] = face_id_best;
 
     float ao = 1.0f;
     if (face_id_best >= 0) {
-      uint3 f = loadFace(faces, face_id_best);
-      float3 a = loadVertex(vertices, f.x);
-      float3 b = loadVertex(vertices, f.y);
-      float3 c = loadVertex(vertices, f.z);
+      uint3 f = load_face(faces, face_id_best);
+      float3 a = load_vertex(vertices, f.x);
+      float3 b = load_vertex(vertices, f.y);
+      float3 c = load_vertex(vertices, f.z);
 
       float3 e1 = {b.x - a.x, b.y - a.y, b.z - a.z};
       float3 e2 = {c.x - a.x, c.y - a.y, c.z - a.z};
@@ -248,7 +248,7 @@ namespace cuda::hploc
             tangent.y * d_local.x + bitangent.y * d_local.y + n.y * d_local.z,
             tangent.z * d_local.x + bitangent.z * d_local.y + n.z * d_local.z);
 
-        if (nexus_bvh_wide_any_hit_from(offset_origin, d, vertices, faces, bvh_nodes, prim_idx, face_id_best)) ++hits;
+        if (hploc_wide8_any_hit_from(offset_origin, d, vertices, faces, bvh_nodes, prim_idx, face_id_best)) ++hits;
       }
       ao = 1.0f - static_cast<float>(hits) / static_cast<float>(AO_SAMPLES);
     }

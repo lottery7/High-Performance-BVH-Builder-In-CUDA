@@ -12,7 +12,7 @@
 __device__ bool bvh_closest_hit(
     const float3& orig,
     const float3& dir,
-    const BVHNode* nodes,
+    const BVH2Node* nodes,
     const unsigned int* leaf_tri_indices,
     unsigned int n_faces,
     const float* vertices,
@@ -34,7 +34,7 @@ __device__ bool bvh_closest_hit(
   stack[sp++] = root_index;
   while (sp > 0) {
     const int node_idx = stack[--sp];
-    const BVHNode& node = nodes[node_idx];
+    const BVH2Node& node = nodes[node_idx];
 
     float t_near, t_far;
     if (!intersect_ray_aabb(orig, dir, node.aabb, t_min, best_t, t_near, t_far)) {
@@ -51,10 +51,10 @@ __device__ bool bvh_closest_hit(
     const int leaf_idx = node_idx - leaf_start;
     const unsigned int tri_idx = leaf_tri_indices[leaf_idx];
 
-    const uint3 face = loadFace(faces, tri_idx);
-    const float3 v0 = loadVertex(vertices, face.x);
-    const float3 v1 = loadVertex(vertices, face.y);
-    const float3 v2 = loadVertex(vertices, face.z);
+    const uint3 face = load_face(faces, tri_idx);
+    const float3 v0 = load_vertex(vertices, face.x);
+    const float3 v1 = load_vertex(vertices, face.y);
+    const float3 v2 = load_vertex(vertices, face.z);
 
     float t, u, v;
     if (intersect_ray_triangle(orig, dir, v0, v1, v2, t_min, best_t, false, t, u, v)) {
@@ -77,7 +77,7 @@ __device__ bool any_hit_from(
     const float3& dir,
     const float* vertices,
     const unsigned int* faces,
-    const BVHNode* nodes,
+    const BVH2Node* nodes,
     const unsigned int* leaf_tri_indices,
     unsigned int n_faces,
     int ignore_face)
@@ -94,7 +94,7 @@ __device__ bool any_hit_from(
   stack[sp++] = root_index;
   while (sp > 0) {
     const int node_idx = stack[--sp];
-    const BVHNode& node = nodes[node_idx];
+    const BVH2Node& node = nodes[node_idx];
 
     float t_near;
     float t_far;
@@ -114,10 +114,10 @@ __device__ bool any_hit_from(
 
     if (static_cast<int>(tri_idx) == ignore_face) continue;
 
-    const uint3 face = loadFace(faces, tri_idx);
-    const float3 v0 = loadVertex(vertices, face.x);
-    const float3 v1 = loadVertex(vertices, face.y);
-    const float3 v2 = loadVertex(vertices, face.z);
+    const uint3 face = load_face(faces, tri_idx);
+    const float3 v0 = load_vertex(vertices, face.x);
+    const float3 v1 = load_vertex(vertices, face.y);
+    const float3 v2 = load_vertex(vertices, face.z);
 
     float t, u, v;
     if (intersect_ray_triangle(orig, dir, v0, v1, v2, t_min, best_t, false, t, u, v)) {
@@ -134,7 +134,7 @@ namespace cuda::lbvh
   __global__ void rt_lbvh_kernel(
       const float* vertices,
       const unsigned int* faces,
-      const BVHNode* bvh_nodes,
+      const BVH2Node* bvh_nodes,
       const unsigned int* leaf_tri_indices,
       int* face_id,
       float* ambient_occlusion,
@@ -161,10 +161,10 @@ namespace cuda::lbvh
 
     float ao = 1.0f;
     if (face_id_best >= 0) {
-      uint3 f = loadFace(faces, face_id_best);
-      float3 a = loadVertex(vertices, f.x);
-      float3 b = loadVertex(vertices, f.y);
-      float3 c = loadVertex(vertices, f.z);
+      uint3 f = load_face(faces, face_id_best);
+      float3 a = load_vertex(vertices, f.x);
+      float3 b = load_vertex(vertices, f.y);
+      float3 c = load_vertex(vertices, f.z);
 
       float3 e1 = {b.x - a.x, b.y - a.y, b.z - a.z};
       float3 e2 = {c.x - a.x, c.y - a.y, c.z - a.z};

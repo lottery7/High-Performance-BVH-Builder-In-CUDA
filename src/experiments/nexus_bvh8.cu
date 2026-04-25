@@ -5,13 +5,14 @@
 #include <vector>
 
 #include "../kernels/helpers/helpers.cuh"
-#include "../kernels/nexus_bvh/nexus_bvh.cuh"
-#include "../kernels/nexus_bvh/nexus_bvh_wide.cuh"
+#include "../kernels/nexus_bvh/nexus_bvh2.cuh"
+#include "../kernels/nexus_bvh/nexus_bvh8.cuh"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
+#include "../utils/wide_bvh_sah.h"
 #include "benchmark.h"
 #include "kernels/ray_tracing/rt.cuh"
-#include "nexus_bvh_wide.h"
+#include "nexus_bvh8.h"
 
 #define EXPERIMENT_NAME "NexusBVH BVH8"
 
@@ -91,7 +92,7 @@ namespace
   }
 }  // namespace
 
-RayTracingResult run_nexus_bvh_wide(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
+RayTracingResult run_nexus_bvh8(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
 {
   std::cout << "\n=== Experiment: " EXPERIMENT_NAME << std::endl;
 
@@ -101,7 +102,7 @@ RayTracingResult run_nexus_bvh_wide(cudaStream_t stream, const cuda::Scene& scen
   const unsigned int max_binary_nodes = 2 * n_faces - 1;
   const unsigned int max_wide_nodes = static_cast<unsigned int>(div_ceil(static_cast<int>(4u * n_faces - 1u), 7));
 
-  BVHNode* d_binary_bvh = nullptr;
+  BVH2Node* d_binary_bvh = nullptr;
   cuda::nexus_bvh::Workspace workspace;
   cuda::nexus_bvh_wide::BVH8Node* d_wide_bvh = nullptr;
   unsigned int* d_prim_idx = nullptr;
@@ -111,7 +112,7 @@ RayTracingResult run_nexus_bvh_wide(cudaStream_t stream, const cuda::Scene& scen
   unsigned int* d_work_alloc_counter = nullptr;
   std::uint64_t* d_index_pairs = nullptr;
 
-  CUDA_SAFE_CALL(cudaMallocAsync(&d_binary_bvh, sizeof(BVHNode) * max_binary_nodes, stream));
+  CUDA_SAFE_CALL(cudaMallocAsync(&d_binary_bvh, sizeof(BVH2Node) * max_binary_nodes, stream));
   cuda::nexus_bvh::allocate_workspace(stream, workspace, n_faces);
   CUDA_SAFE_CALL(cudaMallocAsync(&d_wide_bvh, sizeof(cuda::nexus_bvh_wide::BVH8Node) * max_wide_nodes, stream));
   CUDA_SAFE_CALL(cudaMallocAsync(&d_prim_idx, sizeof(unsigned int) * n_faces, stream));
@@ -211,7 +212,7 @@ RayTracingResult run_nexus_bvh_wide(cudaStream_t stream, const cuda::Scene& scen
     fb.clear();
 
     CUDA_SAFE_CALL(cudaEventRecord(events.rt_start, stream));
-    cuda::hploc::rt_nexus_bvh_wide_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
+    cuda::hploc::rt_hploc_bvh8_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene.d_vertices,
         scene.d_faces,
         d_wide_bvh,
@@ -261,6 +262,7 @@ RayTracingResult run_nexus_bvh_wide(cudaStream_t stream, const cuda::Scene& scen
   CUDA_SAFE_CALL(cudaMemcpyAsync(&n_wide_nodes, d_node_counter, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
   CUDA_SYNC_STREAM(stream);
   curassert(0 < n_wide_nodes && n_wide_nodes <= max_wide_nodes, 226786315);
+  wide_bvh_sah::report_nexus_bvh8_sah(stream, d_wide_bvh, n_wide_nodes);
 
   const double mrays = width * height * AO_SAMPLES * 1e-3 / stats::median(rt_times);
   std::cout << EXPERIMENT_NAME " ray tracing frame render times (in ms) - " << stats::median(rt_times) << std::endl;

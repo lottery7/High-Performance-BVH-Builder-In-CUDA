@@ -18,10 +18,9 @@ namespace cuda
     unsigned int n_faces;
 
     CameraView* d_camera = nullptr;
-    AABB aabb;
 
     Scene(cudaStream_t stream, const SceneGeometry& scene, const CameraView& cam)
-        : stream(stream), n_vertices(scene.vertices.size()), n_faces(scene.faces.size()), aabb(scene.aabb)
+        : stream(stream), n_vertices(scene.vertices.size()), n_faces(scene.faces.size())
     {
       static_assert(sizeof(point3f) == 12);
       static_assert(sizeof(point3u) == 12);

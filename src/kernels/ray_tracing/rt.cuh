@@ -2,7 +2,7 @@
 
 #include <cuda_runtime.h>
 
-#include "../nexus_bvh/nexus_bvh_wide.cuh"
+#include "../hploc/hploc_wide.cuh"
 #include "../structs/bvh_node.h"
 #include "../structs/camera.h"
 
@@ -13,7 +13,7 @@ namespace cuda
     __global__ void rt_hploc_kernel(
         const float* vertices,
         const unsigned int* faces,
-        const BVHNode* bvh_nodes,
+        const BVH2Node* bvh_nodes,
         int* face_id,
         float* ambient_occlusion,
         const CameraView* camera,
@@ -28,10 +28,10 @@ namespace cuda
         float* ambient_occlusion,
         const CameraView* camera);
 
-    __global__ void rt_nexus_bvh_wide_kernel(
+    __global__ void rt_hploc_bvh8_kernel(
         const float* vertices,
         const unsigned int* faces,
-        const cuda::nexus_bvh_wide::BVH8Node* bvh_nodes,
+        const cuda::hploc::BVH8Node* bvh_nodes,
         const unsigned int* prim_idx,
         int* face_id,
         float* ambient_occlusion,
@@ -43,7 +43,7 @@ namespace cuda
     __global__ void rt_lbvh_kernel(
         const float* vertices,
         const unsigned int* faces,
-        const BVHNode* bvh_nodes,
+        const BVH2Node* bvh_nodes,
         const unsigned int* leaf_tri_indices,
         int* face_id,
         float* ambient_occlusion,

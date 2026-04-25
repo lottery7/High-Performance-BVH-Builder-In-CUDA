@@ -1,0 +1,149 @@
+
+
+// MIT License
+
+// Copyright (c) 2023 Nathan V. Morrical
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+#pragma once
+
+#include "gprt.h"
+using namespace gprt;
+
+struct HPLOCParams {
+    int N;              // Number of primitives across all referenced geometries
+    Buffer BVH2;  // BVH2 nodes, excluding leaves ((N - 1) x 32 bytes)
+    Buffer BVH8;  // BVH8 nodes (ceil((N x 2 - 1) / 8) x 80 bytes)
+    Buffer BVH8L; // BVH8 leaves (N x 64 bytes)
+    Buffer AC;    // Some atomic counters for allocation and scheduling, all initialized to 0 (6 x 4 bytes)
+    Buffer I;     // Cluster indices reordered by space filling curve codes (N x 4 bytes)
+    Buffer C;     // Space filling curve codes, sorted in ascending order (N x 8 bytes)
+    Buffer pID;   // BVH2 parent IDs. initialized to -1. (N x 4 bytes)
+
+    Buffer indexPairs; // BVH2 -> BVH8 pairs (N x 8bytes)
+    
+    // For geometry
+    Buffer rootBounds; // Two float3's storing aabb of trimesh
+    Buffer primPrefix; // An exclusive prefix sum of the prim counts in each geometry
+    Buffer triangles; // Triangle index buffers, one handle per geometry
+    Buffer vertices;  // Triangle vertex buffers, one handle per geometry
+};
+
+// A 32 byte BVH2 node structure
+struct BVH2Node {
+    // [32b xlo] [32b ylo] [32b zlo] [1b - isInner] [7b - L Geom ID] [24b - L Prim ID]
+    float4 aabbMinAndL;
+    // [32b xhi] [32b yhi] [32b zhi] [1b - isInner] [7b - R Geom ID] [24b - R Prim ID]
+    float4 aabbMaxAndR;
+
+    #if defined(__SLANG_COMPILER__)
+    __init(int2 leftCluster, int2 rightCluster, float2x3 new_bounds) {
+        aabbMinAndL.xyz = new_bounds[0];
+        aabbMaxAndR.xyz = new_bounds[1];
+        uint32_t leftIndex  = (leftCluster.x  & 0x00FFFFFF) | ((leftCluster.y  & 0x000000FF) << 24);
+        uint32_t rightIndex = (rightCluster.x & 0x00FFFFFF) | ((rightCluster.y & 0x000000FF) << 24);
+        aabbMinAndL.w = asfloat(leftIndex);
+        aabbMaxAndR.w = asfloat(rightIndex);
+    }
+    #endif
+
+    float2x3 getBounds() {
+        #if defined(__SLANG_COMPILER__)
+        return float2x3(aabbMinAndL.xyz, aabbMaxAndR.xyz);
+        #else
+        float2x3 bounds;
+        bounds[0] = aabbMinAndL.xyz();
+        bounds[1] = aabbMaxAndR.xyz();
+        return bounds;
+        #endif
+    }
+
+    bool isChildLeaf(int childIndex) {
+        #if defined(__SLANG_COMPILER__)
+        uint32_t index = (childIndex == 0) ? asuint(aabbMinAndL.w) : asuint(aabbMaxAndR.w);
+        #else
+        uint32_t index = (childIndex == 0) ? *(uint32_t *)&aabbMinAndL.w : *(uint32_t*)&aabbMaxAndR.w;
+        #endif
+        uint32_t top8Bits = (index >> 24);
+        if (top8Bits == 255) return false;
+        return true;
+    }
+
+    uint32_t getChildPrimID(int childIndex) {
+        #if defined(__SLANG_COMPILER__)
+        uint32_t index = (childIndex == 0) ? asuint(aabbMinAndL.w) : asuint(aabbMaxAndR.w);
+        #else
+        uint32_t index = (childIndex == 0) ? *(uint32_t*)&aabbMinAndL.w : *(uint32_t*)&aabbMaxAndR.w;
+        #endif
+        return index & 0x00FFFFFF;
+    }
+
+    uint32_t getChildGeomID(int childIndex) {
+        #if defined(__SLANG_COMPILER__)
+        uint32_t index = (childIndex == 0) ? asuint(aabbMinAndL.w) : asuint(aabbMaxAndR.w);
+        #else
+        uint32_t index = (childIndex == 0) ? *(uint32_t*)&aabbMinAndL.w : *(uint32_t*)&aabbMaxAndR.w;
+        #endif
+        return (index >> 24) & 0x000000FF;
+    }
+
+    uint32_t getChildCluster(int childIndex) {
+        #if defined(__SLANG_COMPILER__)
+        uint32_t index = (childIndex == 0) ? asuint(aabbMinAndL.w) : asuint(aabbMaxAndR.w);
+        #else
+        uint32_t index = (childIndex == 0) ? *(uint32_t*)&aabbMinAndL.w : *(uint32_t*)&aabbMaxAndR.w;
+        #endif
+        return index;
+    }
+};
+
+// 80 bytes
+// Just as an example, following from here: https://users.aalto.fi/~laines9/publications/ylitie2017hpg_paper.pdf
+struct BVH8Node {  
+    // To interpret "meta" field:
+    //   Empty child slot: field set to 00000000
+    //   Internal node: high 3 bits 001 while low 5 bits store child slot index + 24. (values range in 24-31)
+    //   Leaf node: high 3 bits store number of triangles using unary encoding, and low 5 bits store the
+    //              index of first triangle relative to the triangle base index (ranging in 0...23)
+
+    // [32b origin x] [32b origin y]
+    uint64_t orxy;
+
+    // [32b origin z] [8b extent x] [8b extent y] [8b extent z] [8b inner node mask]
+    uint64_t oeim;
+
+    // [32b child node base index] [32b triangle base index]
+    uint64_t ntbi;
+
+    // [8b child 0] [8b child 1] [8b child 2] [8b child 3] [8b child 4] [8b child 5] [8b child 6] [8b child 7]
+    uint64_t meta;
+    uint64_t qlox;
+    uint64_t qloy;
+    uint64_t qloz;
+    uint64_t qhix;
+    uint64_t qhiy;
+    uint64_t qhiz;
+};
+
+struct BVH8Leaf {
+    // A bit naive at the moment...
+    //[8b geom ID] [24b prim ID]
+    float3 v[3];
+    uint32_t clusterID;
+};
