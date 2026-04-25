@@ -16,11 +16,11 @@ struct AABB {
   float max_y = 0;
   float max_z = 0;
 
-  __host__ __device__ static AABB neutral() { return {FLT_MAX, FLT_MAX, FLT_MAX, FLT_MIN, FLT_MIN, FLT_MIN}; }
+  __host__ __device__ __forceinline__ static AABB neutral() { return {FLT_MAX, FLT_MAX, FLT_MAX, FLT_MIN, FLT_MIN, FLT_MIN}; }
 
-  __host__ __device__ float surface_area() const { return 2.0f * half_area(); }
+  __host__ __device__ __forceinline__ float surface_area() const { return 2.0f * half_area(); }
 
-  __host__ __device__ float half_area() const
+  __host__ __device__ __forceinline__ float half_area() const
   {
     float dx = max_x - min_x;
     float dy = max_y - min_y;
@@ -28,7 +28,7 @@ struct AABB {
     return fmaf(dz, dx + dy, dx * dy);
   }
 
-  __host__ __device__ void union_with(const AABB& rhs)
+  __host__ __device__ __forceinline__ void union_with(const AABB& rhs)
   {
     min_x = fminf(min_x, rhs.min_x);
     min_y = fminf(min_y, rhs.min_y);
@@ -39,7 +39,7 @@ struct AABB {
     max_z = fmaxf(max_z, rhs.max_z);
   }
 
-  __host__ __device__ static AABB union_of(const AABB& lhs, const AABB& rhs)
+  __host__ __device__ __forceinline__ static AABB union_of(const AABB& lhs, const AABB& rhs)
   {
     AABB aabb;
     aabb.min_x = fminf(lhs.min_x, rhs.min_x);
@@ -51,7 +51,7 @@ struct AABB {
     return aabb;
   }
 
-  __host__ __device__ static AABB from_triangle(const float3& p0, const float3& p1, const float3& p2)
+  __host__ __device__ __forceinline__ static AABB from_triangle(const float3& p0, const float3& p1, const float3& p2)
   {
     AABB aabb;
     aabb.min_x = fminf(p0.x, fminf(p1.x, p2.x));
@@ -65,7 +65,7 @@ struct AABB {
   }
 };
 
-__host__ __device__ inline float half_surface_area_of_union(const AABB& lhs, const AABB& rhs)
+__host__ __device__ __forceinline__ float half_surface_area_of_union(const AABB& lhs, const AABB& rhs)
 {
   const float min_x = fminf(lhs.min_x, rhs.min_x);
   const float min_y = fminf(lhs.min_y, rhs.min_y);

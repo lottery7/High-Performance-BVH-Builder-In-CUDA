@@ -9,7 +9,6 @@
 
 #define SEARCH_RADIUS 8
 #define WARP_SIZE 32
-#define MERGING_THRESHOLD 16
 #define ALL_THREADS 0xFFFFFFFFu
 
 __device__ __forceinline__ static unsigned int get_lane_id()
@@ -20,8 +19,7 @@ __device__ __forceinline__ static unsigned int get_lane_id()
 
 __device__ __forceinline__ static unsigned long long delta(const MortonCode* morton_codes, unsigned int l, unsigned int r)
 {
-  // TODO ldg кеш помог
-  return (static_cast<unsigned long long>(__ldg(&morton_codes[l])) << 32 | l) ^ (static_cast<unsigned long long>(__ldg(&morton_codes[r])) << 32 | r);
+  return (static_cast<unsigned long long>(morton_codes[l]) << 32 | l) ^ (static_cast<unsigned long long>(morton_codes[r]) << 32 | r);
 }
 
 __device__ __forceinline__ static unsigned int find_parent_id(const MortonCode* morton_codes, unsigned int n_faces, unsigned int l, unsigned int r)
@@ -40,9 +38,11 @@ __device__ __forceinline__ static unsigned int load_cluster_id(
     unsigned int& cluster_id)
 {
   curassert(start <= end, 2349005);
-  unsigned int index = get_lane_id() - offset;
-  bool is_valid = index < min(end - start, MERGING_THRESHOLD);
+  int index = static_cast<int>(get_lane_id()) - offset;
+  // Загружаем до WARP_SIZE / 2 кластеров
+  bool is_valid = index >= 0 && index < min(end - start, WARP_SIZE / 2);
   if (is_valid) cluster_id = cluster_ids[start + index];
+  // Количество валидных кластеров во всем ворпе
   unsigned int n_valid_clusters = __popc(__ballot_sync(ALL_THREADS, is_valid && cluster_id != INVALID_INDEX));
   return n_valid_clusters;
 }
@@ -59,15 +59,7 @@ __device__ __forceinline__ static AABB shfl_sync(unsigned mask, AABB aabb, int s
   };
 }
 
-__device__ __forceinline__ static unsigned lanemask_lt()
-{
-  // TODO Эквивалент (1u << lane_id) - 1), помогло
-  unsigned int r;
-  asm volatile("mov.u32 %0, %%lanemask_lt;" : "=r"(r));
-  return r;
-}
-
-__device__ __forceinline__ static unsigned int merge_clusters_create_bvh2_node(
+__device__ static unsigned int merge_clusters_create_bvh2_node(
     unsigned int warp_n_clusters,
     unsigned int nn_lane_id,
     unsigned int& cluster_id,
@@ -76,8 +68,11 @@ __device__ __forceinline__ static unsigned int merge_clusters_create_bvh2_node(
     BVH2Node* __restrict__ nodes)
 {
   unsigned int lane_id = get_lane_id();
+  // lane_id ближайшего соседа ближайшего соседа
   unsigned int nn_nn_lane_id = __shfl_sync(ALL_THREADS, nn_lane_id, nn_lane_id);
+  // Проверка NN[NN[i]] == i
   bool is_mutual_nn = lane_id < warp_n_clusters && lane_id == nn_nn_lane_id;
+  // Мержим только левым ребенком
   bool should_merge = is_mutual_nn && lane_id < nn_lane_id;
 
   unsigned int merge_mask = __ballot_sync(ALL_THREADS, should_merge);
@@ -94,13 +89,15 @@ __device__ __forceinline__ static unsigned int merge_clusters_create_bvh2_node(
   if (should_merge) {
     cluster_aabb = AABB::union_of(cluster_aabb, neighbor_cluster_aabb);
     BVH2Node node{cluster_aabb, cluster_id, neighbor_cluster_id};
-    // cluster_id = cluster_start_id + __popc(merge_mask & (1u << lane_id) - 1);
-    cluster_id = cluster_start_id + __popc(merge_mask & lanemask_lt());
+    // Число потоков ворпа с id меньше нашего, которые тоже будут делать merge
+    cluster_id = cluster_start_id + __popc(merge_mask & (1u << lane_id) - 1);
     nodes[cluster_id] = node;
   }
 
+  // Для обеспечения occupancy убираем потоки, которые соответствуют смерженым кластерам (из двух оставляем один)
   const unsigned int active_mask = __ballot_sync(ALL_THREADS, should_merge || !is_mutual_nn);
 
+  // find nth set bit - n-ый включенный бит - lane_id потока, который должен занять наш поток
   const int new_lane_id = __fns(active_mask, 0, lane_id + 1);
   cluster_id = __shfl_sync(ALL_THREADS, cluster_id, new_lane_id);
   if (new_lane_id == -1) cluster_id = INVALID_INDEX;
@@ -122,14 +119,13 @@ __device__ __forceinline__ unsigned int find_nearest_neighbor(unsigned int warp_
   const unsigned int lane_id = get_lane_id();
   uint2 nearest = make_uint2(INVALID_INDEX, INVALID_INDEX);
 
-// #pragma unroll TODO Не помогло
   for (unsigned int radius = 1; radius <= SEARCH_RADIUS; ++radius) {
     const unsigned int neighbor_index = lane_id + radius;
     unsigned int area = ~0u;
     AABB right_neighbor_aabb = shfl_sync(ALL_THREADS, cluster_aabb, neighbor_index);
 
     if (neighbor_index < warp_n_clusters) {
-      area = __float_as_uint(half_surface_area_of_union(right_neighbor_aabb, cluster_aabb));
+      area = __float_as_uint(AABB::union_of(right_neighbor_aabb, cluster_aabb).surface_area());
       if (area < nearest.x) nearest = make_uint2(area, neighbor_index);
     }
 
@@ -142,7 +138,7 @@ __device__ __forceinline__ unsigned int find_nearest_neighbor(unsigned int warp_
   return nearest.y;
 }
 
-__device__ __forceinline__ static void ploc_merge(
+__device__ static void ploc_merge(
     unsigned int target_lane_id,
     unsigned int left,
     unsigned int right,
@@ -166,12 +162,11 @@ __device__ __forceinline__ static void ploc_merge(
   unsigned int n_right_clusters = load_cluster_id(r_start, r_end, n_left_clusters, cluster_ids, cluster_id);
   unsigned int warp_n_clusters = n_left_clusters + n_right_clusters;
 
-  AABB cluster_aabb{};  // TODO Фигурные скобки реально помогают
+  AABB cluster_aabb;
   if (lane_id < warp_n_clusters) {
     cluster_aabb = nodes[cluster_id].aabb;
   }
-
-  unsigned int threshold = __shfl_sync(ALL_THREADS, is_final, target_lane_id) ? 1 : MERGING_THRESHOLD;
+  unsigned int threshold = __shfl_sync(ALL_THREADS, is_final, target_lane_id) ? 1 : WARP_SIZE / 2;
 
   while (warp_n_clusters > threshold) {
     unsigned int nn_lane_id = find_nearest_neighbor(warp_n_clusters, cluster_aabb);
@@ -215,13 +210,14 @@ namespace cuda::hploc
             left = prev_id;
           }
         }
+
         if (prev_id == INVALID_INDEX) is_active = false;
       }
 
       curassert(left <= right, 67224631);
       unsigned int size = right - left + 1;
       bool is_final = is_active && size == n_faces;
-      unsigned int warp_mask = __ballot_sync(ALL_THREADS, is_active && (size > MERGING_THRESHOLD) || is_final);
+      unsigned int warp_mask = __ballot_sync(ALL_THREADS, is_active && (size > WARP_SIZE / 2) || is_final);
 
       while (warp_mask) {
         unsigned int target_lane_id = __ffs(warp_mask) - 1;
@@ -243,10 +239,14 @@ namespace cuda::hploc
     const unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index >= n_faces) return;
 
-    const uint3 f = load_face(faces, index);
-    const float3 v0 = load_vertex(vertices, f.x);
-    const float3 v1 = load_vertex(vertices, f.y);
-    const float3 v2 = load_vertex(vertices, f.z);
+    const unsigned int base_index = 3 * index;
+    const unsigned int f0 = faces[base_index + 0];
+    const unsigned int f1 = faces[base_index + 1];
+    const unsigned int f2 = faces[base_index + 2];
+
+    const float3 v0 = load_vertex(vertices, f0);
+    const float3 v1 = load_vertex(vertices, f1);
+    const float3 v2 = load_vertex(vertices, f2);
 
     AABB aabb = AABB::from_triangle(v0, v1, v2);
     nodes[index] = {aabb, INVALID_INDEX, index};

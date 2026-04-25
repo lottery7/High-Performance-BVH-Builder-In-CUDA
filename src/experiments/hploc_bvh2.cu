@@ -72,7 +72,7 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
     prof.record_stop(Stage::Sort);
 
     prof.record_start(Stage::Build);
-    constexpr size_t block_size = 128;
+    constexpr size_t block_size = 64;
     cuda::hploc::build_kernel<<<div_ceil(n_faces, block_size), block_size, 0, stream>>>(
         parents,
         morton_codes_sorted,

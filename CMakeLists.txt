@@ -35,6 +35,7 @@ set(CUDA_SOURCES
         src/kernels/helpers/fill_indices.cu
         src/kernels/lbvh/lbvh.cu
         src/kernels/hploc/hploc_bvh2.cu
+        src/kernels/hploc/hploc_bvh8.cu
         src/kernels/hploc/hploc_wide.cu
         src/kernels/nexus_bvh/nexus_bvh.cu
         src/kernels/nexus_bvh/nexus_bvh_wide.cu
