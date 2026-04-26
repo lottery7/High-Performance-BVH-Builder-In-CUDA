@@ -2,7 +2,6 @@
 #include <cuda_runtime.h>
 
 #include "../../utils/utils.h"
-#include "../helpers/geometry_helpers.cu"
 #include "../helpers/helpers.cuh"
 #include "../structs/aabb.h"
 #include "../structs/morton_code.h"
@@ -243,7 +242,7 @@ __device__ __forceinline__ static void atomic_grow(AABB* dst, const AABB& src)
   atomic_max_float(&dst->max_z, src.max_z);
 }
 
-__device__ __forceinline__ static AABB shfl_down_sync_aabb(unsigned int mask, AABB value, unsigned int delta)
+__device__ __forceinline__ static AABB shfl_down_sync(unsigned int mask, AABB value, unsigned int delta)
 {
   return {
       __shfl_down_sync(mask, value.min_x, delta),
@@ -257,11 +256,11 @@ __device__ __forceinline__ static AABB shfl_down_sync_aabb(unsigned int mask, AA
 
 __device__ __forceinline__ static AABB warp_reduce_grow(AABB bounds)
 {
-  bounds = AABB::union_of(bounds, shfl_down_sync_aabb(ALL_THREADS, bounds, 16));
-  bounds = AABB::union_of(bounds, shfl_down_sync_aabb(ALL_THREADS, bounds, 8));
-  bounds = AABB::union_of(bounds, shfl_down_sync_aabb(ALL_THREADS, bounds, 4));
-  bounds = AABB::union_of(bounds, shfl_down_sync_aabb(ALL_THREADS, bounds, 2));
-  bounds = AABB::union_of(bounds, shfl_down_sync_aabb(ALL_THREADS, bounds, 1));
+  bounds = AABB::union_of(bounds, shfl_down_sync(ALL_THREADS, bounds, 16));
+  bounds = AABB::union_of(bounds, shfl_down_sync(ALL_THREADS, bounds, 8));
+  bounds = AABB::union_of(bounds, shfl_down_sync(ALL_THREADS, bounds, 4));
+  bounds = AABB::union_of(bounds, shfl_down_sync(ALL_THREADS, bounds, 2));
+  bounds = AABB::union_of(bounds, shfl_down_sync(ALL_THREADS, bounds, 1));
   return bounds;
 }
 

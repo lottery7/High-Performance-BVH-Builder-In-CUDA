@@ -53,8 +53,7 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
     CUDA_SAFE_CALL(cudaMemsetAsync(parents, 0xFF, sizeof(unsigned int) * n_nodes_capacity, stream));
     CUDA_SAFE_CALL(cudaMemcpyAsync(n_clusters, &n_faces, sizeof(n_faces), cudaMemcpyHostToDevice, stream));
     CUDA_SAFE_CALL(cudaMemcpyAsync(scene_aabb, &empty_scene, sizeof(AABB), cudaMemcpyHostToDevice, stream));
-    // TODO Уменьшение сетки в 3 раза + grid stride дает стабильный прирост в 0.06 ms
-    cuda::hploc::build_leaves_kernel<<<div_ceil(n_faces, 64) / 3, 64, 0, stream>>>(
+    cuda::hploc::build_leaves_kernel<<<div_ceil(n_faces, 128) / 3, 128, 0, stream>>>(
         scene.d_faces,
         n_faces,
         scene.d_vertices,
@@ -77,14 +76,7 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
     prof.record_stop(Stage::Sort);
 
     prof.record_start(Stage::Build);
-    constexpr size_t build_kernel_block_size = 64;
-    cuda::hploc::build_kernel<<<div_ceil(n_faces, build_kernel_block_size), build_kernel_block_size, 0, stream>>>(
-        parents,
-        morton_codes_sorted,
-        nodes,
-        clusters_sorted,
-        n_clusters,
-        n_faces);
+    cuda::hploc::build_kernel<<<div_ceil(n_faces, 64), 64, 0, stream>>>(parents, morton_codes_sorted, nodes, clusters_sorted, n_clusters, n_faces);
     prof.record_stop(Stage::Build);
 
     prof.record_stop(Stage::TotalBuild);

@@ -66,11 +66,9 @@ namespace cuda
   }
 }  // namespace cuda
 
-inline int div_ceil(int a, int b) { return (a + b - 1) / b; }
-
-inline size_t div_ceil(size_t a, size_t b)
+template <typename Ta, typename Tb>
+int div_ceil(Ta a, Tb b)
 {
-  rassert(a + b > 0, 131997010);
   return (a + b - 1) / b;
 }
 
