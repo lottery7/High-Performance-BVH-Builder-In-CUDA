@@ -14,10 +14,10 @@
 #include "libimages/debug_io.h"
 #include "libimages/images.h"
 
-#define CUDA_SAFE_CALL(expr) cuda::report_error(expr, __LINE__)
 #define CUDA_SYNC_STREAM(expr) cuda::report_error(cudaStreamSynchronize(expr), __LINE__)
 
 #if RASSERT_ENABLED
+#define CUDA_SAFE_CALL(expr) cuda::report_error(expr, __LINE__)
 #define curassert(condition, error_code)                                      \
   do {                                                                        \
     if (!(condition)) {                                                       \
@@ -26,6 +26,7 @@
   } while (false)
 #else
 #define curassert(condition, error_code)  // do nothing
+#define CUDA_SAFE_CALL(expr) expr         // do nothing
 #endif
 
 namespace cuda

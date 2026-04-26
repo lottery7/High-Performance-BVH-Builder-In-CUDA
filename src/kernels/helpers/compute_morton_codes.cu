@@ -9,10 +9,17 @@
 namespace cuda
 {
 
-  __global__ void compute_morton_codes_kernel(const AABB *scene_aabb, unsigned int *faces, float *vertices, MortonCode *morton_codes, unsigned int n_faces)
+  __global__ void compute_morton_codes_kernel(
+      const AABB* __restrict__ scene_aabb,
+      const unsigned int* __restrict__ faces,
+      const float* __restrict__ vertices,
+      MortonCode* __restrict__ morton_codes,
+      unsigned int n_faces)
   {
     unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index >= n_faces) return;
+
+    AABB scene_bounds = *scene_aabb;
 
     const float eps = 1e-9f;
     float dx = fmaxf(scene_aabb->max_x - scene_aabb->min_x, eps);
@@ -38,9 +45,9 @@ namespace cuda
     const float cy = 0.5f * (min_y + max_y);
     const float cz = 0.5f * (min_z + max_z);
 
-    float nx = fminf(fmaxf((cx - scene_aabb->min_x) / dx, 0.0f), 1.0f);
-    float ny = fminf(fmaxf((cy - scene_aabb->min_y) / dy, 0.0f), 1.0f);
-    float nz = fminf(fmaxf((cz - scene_aabb->min_z) / dz, 0.0f), 1.0f);
+    float nx = fminf(fmaxf((cx - scene_bounds.min_x) / dx, 0.0f), 1.0f);
+    float ny = fminf(fmaxf((cy - scene_bounds.min_y) / dy, 0.0f), 1.0f);
+    float nz = fminf(fmaxf((cz - scene_bounds.min_z) / dz, 0.0f), 1.0f);
 
     morton_codes[index] = get_morton_code(nx, ny, nz);
   }

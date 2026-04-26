@@ -4,6 +4,7 @@
 
 #include "../../utils/defines.h"
 #include "../../utils/utils.h"
+#include "kernels/helpers/helpers.cuh"
 #include "nexus_bvh2.cuh"
 
 namespace
@@ -16,19 +17,13 @@ namespace
 
   __device__ __forceinline__ unsigned int get_lane_id() { return threadIdx.x & (WARP_SIZE - 1u); }
 
-  __device__ __forceinline__ AABB make_empty_aabb()
-  {
-    return {FLT_MAX, FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX};
-  }
+  __device__ __forceinline__ AABB make_empty_aabb() { return {FLT_MAX, FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX}; }
 
   __device__ __forceinline__ void grow_aabb(AABB& dst, const AABB& src) { dst = AABB::union_of(dst, src); }
 
   __device__ __forceinline__ float3 centroid_of(const AABB& aabb)
   {
-    return make_float3(
-        0.5f * (aabb.min_x + aabb.max_x),
-        0.5f * (aabb.min_y + aabb.max_y),
-        0.5f * (aabb.min_z + aabb.max_z));
+    return make_float3(0.5f * (aabb.min_x + aabb.max_x), 0.5f * (aabb.min_y + aabb.max_y), 0.5f * (aabb.min_z + aabb.max_z));
   }
 
   __device__ __forceinline__ unsigned int ordered_positive_float_bits(float value) { return __float_as_uint(value); }
@@ -89,9 +84,7 @@ namespace
 
   __device__ __forceinline__ uint2 shfl_sync(unsigned int mask, uint2 value, unsigned int src_lane)
   {
-    return make_uint2(
-        __shfl_sync(mask, value.x, static_cast<int>(src_lane)),
-        __shfl_sync(mask, value.y, static_cast<int>(src_lane)));
+    return make_uint2(__shfl_sync(mask, value.x, static_cast<int>(src_lane)), __shfl_sync(mask, value.y, static_cast<int>(src_lane)));
   }
 
   __device__ __forceinline__ AABB warp_reduce_grow(AABB bounds)
@@ -199,7 +192,11 @@ namespace cuda::nexus_bvh
     return (static_cast<std::uint64_t>(morton_codes[a]) << 32u | a) ^ (static_cast<std::uint64_t>(morton_codes[b]) << 32u | b);
   }
 
-  __device__ __forceinline__ unsigned int find_parent_id(unsigned int left, unsigned int right, unsigned int prim_count, const unsigned int* morton_codes)
+  __device__ __forceinline__ unsigned int find_parent_id(
+      unsigned int left,
+      unsigned int right,
+      unsigned int prim_count,
+      const unsigned int* morton_codes)
   {
     if (left == 0u || (right != prim_count - 1u && delta(right, right + 1u, morton_codes) < delta(left - 1u, left, morton_codes))) {
       return right;
@@ -223,7 +220,11 @@ namespace cuda::nexus_bvh
     return __popc(__ballot_sync(FULL_MASK, valid_lane && cluster_index != INVALID_INDEX));
   }
 
-  __device__ __forceinline__ void store_indices(unsigned int previous_num_prims, unsigned int cluster_index, const BuildState& build_state, unsigned int start)
+  __device__ __forceinline__ void store_indices(
+      unsigned int previous_num_prims,
+      unsigned int cluster_index,
+      const BuildState& build_state,
+      unsigned int start)
   {
     const unsigned int lane_id = get_lane_id();
     if (lane_id < previous_num_prims) build_state.cluster_indices[start + lane_id] = cluster_index;
@@ -271,7 +272,11 @@ namespace cuda::nexus_bvh
     return num_prims - merge_count;
   }
 
-  __device__ __forceinline__ unsigned int find_nearest_neighbor(unsigned int num_prims, unsigned int cluster_index, AABB cluster_bounds, const BuildState& build_state)
+  __device__ __forceinline__ unsigned int find_nearest_neighbor(
+      unsigned int num_prims,
+      unsigned int cluster_index,
+      AABB cluster_bounds,
+      const BuildState& build_state)
   {
     (void)cluster_index;
     (void)build_state;
@@ -374,132 +379,6 @@ namespace cuda::nexus_bvh
 
 namespace cuda::nexus_bvh
 {
-  namespace
-  {
-    struct EventPair {
-      cudaEvent_t start = nullptr;
-      cudaEvent_t stop = nullptr;
-
-      EventPair()
-      {
-        CUDA_SAFE_CALL(cudaEventCreate(&start));
-        CUDA_SAFE_CALL(cudaEventCreate(&stop));
-      }
-
-      ~EventPair()
-      {
-        cudaEventDestroy(start);
-        cudaEventDestroy(stop);
-      }
-    };
-
-    double elapsed_ms(const EventPair& pair)
-    {
-      float elapsed_ms = 0.0f;
-      CUDA_SAFE_CALL(cudaEventElapsedTime(&elapsed_ms, pair.start, pair.stop));
-      return static_cast<double>(elapsed_ms);
-    }
-
-    void build_impl(
-        cudaStream_t stream,
-        unsigned int* d_faces,
-        float* d_vertices,
-        BVH2Node* d_nodes,
-        Workspace& workspace,
-        unsigned int n_faces,
-        BuildTimings* timings)
-    {
-      BuildState build_state{};
-      build_state.scene_bounds = workspace.d_scene_bounds;
-      build_state.nodes = d_nodes;
-      build_state.cluster_indices = workspace.d_cluster_indices;
-      build_state.parent_indices = workspace.d_parent_indices;
-      build_state.prim_count = n_faces;
-      build_state.cluster_count = workspace.d_cluster_count;
-
-      const AABB empty_scene_bounds{FLT_MAX, FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX};
-      CUDA_SAFE_CALL(cudaMemcpyAsync(build_state.scene_bounds, &empty_scene_bounds, sizeof(AABB), cudaMemcpyHostToDevice, stream));
-      CUDA_SAFE_CALL(cudaMemsetAsync(build_state.parent_indices, 0xff, sizeof(unsigned int) * n_faces, stream));
-      CUDA_SAFE_CALL(cudaMemcpyAsync(build_state.cluster_count, &n_faces, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
-
-      if (timings == nullptr) {
-        compute_scene_bounds_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(build_state, d_faces, d_vertices);
-        compute_morton_codes_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(build_state, workspace.d_morton_codes);
-
-        cub::DeviceRadixSort::SortPairs(
-            workspace.d_sort_temp_storage,
-            workspace.sort_temp_storage_bytes,
-            workspace.d_morton_codes,
-            workspace.d_morton_codes_sorted,
-            workspace.d_cluster_indices,
-            workspace.d_cluster_indices_sorted,
-            n_faces,
-            0,
-            32,
-            stream);
-
-        build_state.cluster_indices = workspace.d_cluster_indices_sorted;
-        constexpr unsigned int block_size = 64;
-        build_bvh2_kernel<<<div_ceil(static_cast<int>(n_faces), static_cast<int>(block_size)), block_size, 0, stream>>>(
-            build_state,
-            workspace.d_morton_codes_sorted);
-        return;
-      }
-
-      EventPair total;
-      EventPair scene_bounds;
-      EventPair morton;
-      EventPair sort;
-      EventPair build;
-
-      CUDA_SAFE_CALL(cudaEventRecord(total.start, stream));
-
-      CUDA_SAFE_CALL(cudaEventRecord(scene_bounds.start, stream));
-      compute_scene_bounds_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(build_state, d_faces, d_vertices);
-      CUDA_SAFE_CALL(cudaEventRecord(scene_bounds.stop, stream));
-
-      CUDA_SAFE_CALL(cudaEventRecord(morton.start, stream));
-      compute_morton_codes_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(build_state, workspace.d_morton_codes);
-      CUDA_SAFE_CALL(cudaEventRecord(morton.stop, stream));
-
-      CUDA_SAFE_CALL(cudaEventRecord(sort.start, stream));
-      cub::DeviceRadixSort::SortPairs(
-          workspace.d_sort_temp_storage,
-          workspace.sort_temp_storage_bytes,
-          workspace.d_morton_codes,
-          workspace.d_morton_codes_sorted,
-          workspace.d_cluster_indices,
-          workspace.d_cluster_indices_sorted,
-          n_faces,
-          0,
-          32,
-          stream);
-      CUDA_SAFE_CALL(cudaEventRecord(sort.stop, stream));
-
-      build_state.cluster_indices = workspace.d_cluster_indices_sorted;
-      constexpr unsigned int block_size = 64;
-      CUDA_SAFE_CALL(cudaEventRecord(build.start, stream));
-      build_bvh2_kernel<<<div_ceil(static_cast<int>(n_faces), static_cast<int>(block_size)), block_size, 0, stream>>>(
-          build_state,
-          workspace.d_morton_codes_sorted);
-      CUDA_SAFE_CALL(cudaEventRecord(build.stop, stream));
-
-      CUDA_SAFE_CALL(cudaEventRecord(total.stop, stream));
-
-      CUDA_SAFE_CALL(cudaEventSynchronize(scene_bounds.stop));
-      CUDA_SAFE_CALL(cudaEventSynchronize(morton.stop));
-      CUDA_SAFE_CALL(cudaEventSynchronize(sort.stop));
-      CUDA_SAFE_CALL(cudaEventSynchronize(build.stop));
-      CUDA_SAFE_CALL(cudaEventSynchronize(total.stop));
-
-      timings->scene_bounds_ms = elapsed_ms(scene_bounds);
-      timings->morton_ms = elapsed_ms(morton);
-      timings->sort_ms = elapsed_ms(sort);
-      timings->build_ms = elapsed_ms(build);
-      timings->build_pipeline_ms = elapsed_ms(total);
-    }
-  }  // namespace
-
   void allocate_workspace(cudaStream_t stream, Workspace& workspace, unsigned int n_faces)
   {
     CUDA_SAFE_CALL(cudaMallocAsync(&workspace.d_scene_bounds, sizeof(AABB), stream));
@@ -509,24 +388,10 @@ namespace cuda::nexus_bvh
     CUDA_SAFE_CALL(cudaMallocAsync(&workspace.d_cluster_indices_sorted, sizeof(unsigned int) * n_faces, stream));
     CUDA_SAFE_CALL(cudaMallocAsync(&workspace.d_parent_indices, sizeof(unsigned int) * n_faces, stream));
     CUDA_SAFE_CALL(cudaMallocAsync(&workspace.d_cluster_count, sizeof(unsigned int), stream));
-
-    cub::DeviceRadixSort::SortPairs(
-        nullptr,
-        workspace.sort_temp_storage_bytes,
-        workspace.d_morton_codes,
-        workspace.d_morton_codes_sorted,
-        workspace.d_cluster_indices,
-        workspace.d_cluster_indices_sorted,
-        n_faces,
-        0,
-        32,
-        stream);
-    CUDA_SAFE_CALL(cudaMallocAsync(&workspace.d_sort_temp_storage, workspace.sort_temp_storage_bytes, stream));
   }
 
   void free_workspace(cudaStream_t stream, Workspace& workspace)
   {
-    if (workspace.d_sort_temp_storage != nullptr) CUDA_SAFE_CALL(cudaFreeAsync(workspace.d_sort_temp_storage, stream));
     if (workspace.d_cluster_count != nullptr) CUDA_SAFE_CALL(cudaFreeAsync(workspace.d_cluster_count, stream));
     if (workspace.d_parent_indices != nullptr) CUDA_SAFE_CALL(cudaFreeAsync(workspace.d_parent_indices, stream));
     if (workspace.d_cluster_indices_sorted != nullptr) CUDA_SAFE_CALL(cudaFreeAsync(workspace.d_cluster_indices_sorted, stream));
@@ -535,22 +400,5 @@ namespace cuda::nexus_bvh
     if (workspace.d_morton_codes != nullptr) CUDA_SAFE_CALL(cudaFreeAsync(workspace.d_morton_codes, stream));
     if (workspace.d_scene_bounds != nullptr) CUDA_SAFE_CALL(cudaFreeAsync(workspace.d_scene_bounds, stream));
     workspace = {};
-  }
-
-  void build(cudaStream_t stream, unsigned int* d_faces, float* d_vertices, BVH2Node* d_nodes, Workspace& workspace, unsigned int n_faces)
-  {
-    build_impl(stream, d_faces, d_vertices, d_nodes, workspace, n_faces, nullptr);
-  }
-
-  void build(
-      cudaStream_t stream,
-      unsigned int* d_faces,
-      float* d_vertices,
-      BVH2Node* d_nodes,
-      Workspace& workspace,
-      unsigned int n_faces,
-      BuildTimings& timings)
-  {
-    build_impl(stream, d_faces, d_vertices, d_nodes, workspace, n_faces, &timings);
   }
 }  // namespace cuda::nexus_bvh

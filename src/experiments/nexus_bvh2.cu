@@ -129,7 +129,10 @@ RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, c
     CUDA_SAFE_CALL(cudaMemcpyAsync(build_state.cluster_count, &n_faces, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
 
     CUDA_SAFE_CALL(cudaEventRecord(events.scene_bounds_start, stream));
-    cuda::nexus_bvh::compute_scene_bounds_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(build_state, scene.d_faces, scene.d_vertices);
+    cuda::nexus_bvh::compute_scene_bounds_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(
+        build_state,
+        scene.d_faces,
+        scene.d_vertices);
     CUDA_SAFE_CALL(cudaEventRecord(events.scene_bounds_stop, stream));
 
     CUDA_SAFE_CALL(cudaEventRecord(events.morton_start, stream));
@@ -137,17 +140,15 @@ RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, c
     CUDA_SAFE_CALL(cudaEventRecord(events.morton_stop, stream));
 
     CUDA_SAFE_CALL(cudaEventRecord(events.sort_start, stream));
-    cub::DeviceRadixSort::SortPairs(
-        workspace.d_sort_temp_storage,
-        workspace.sort_temp_storage_bytes,
+    cuda::sort_pairs(
+        stream,
         workspace.d_morton_codes,
         workspace.d_morton_codes_sorted,
         workspace.d_cluster_indices,
         workspace.d_cluster_indices_sorted,
         n_faces,
         0,
-        32,
-        stream);
+        30);
     CUDA_SAFE_CALL(cudaEventRecord(events.sort_stop, stream));
 
     build_state.cluster_indices = workspace.d_cluster_indices_sorted;

@@ -19,18 +19,18 @@ namespace cuda
   template <typename KeyT, typename ValueT>
   void sort_pairs(
       cudaStream_t stream,
-      const KeyT* d_keys_in,
-      KeyT* d_keys_out,
-      const ValueT* d_values_in,
-      ValueT* d_values_out,
+      const KeyT* __restrict__ d_keys_in,
+      KeyT* __restrict__ d_keys_out,
+      const ValueT* __restrict__ d_values_in,
+      ValueT* __restrict__ d_values_out,
       int count,
       int begin_bit,
       int end_bit);
 
   __global__ void compute_morton_codes_kernel(
-      const AABB* scene_aabb,
-      unsigned int* faces,
-      float* vertices,
-      MortonCode* morton_codes,
+      const AABB* __restrict__ scene_aabb,
+      const unsigned int* __restrict__ faces,
+      const float* __restrict__ vertices,
+      MortonCode* __restrict__ morton_codes,
       unsigned int n_faces);
 }  // namespace cuda

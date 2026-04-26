@@ -177,17 +177,15 @@ RayTracingResult run_nexus_bvh8(cudaStream_t stream, const cuda::Scene& scene, c
     CUDA_SAFE_CALL(cudaEventRecord(events.morton_stop, stream));
 
     CUDA_SAFE_CALL(cudaEventRecord(events.sort_start, stream));
-    cub::DeviceRadixSort::SortPairs(
-        workspace.d_sort_temp_storage,
-        workspace.sort_temp_storage_bytes,
+    cuda::sort_pairs(
+        stream,
         workspace.d_morton_codes,
         workspace.d_morton_codes_sorted,
         workspace.d_cluster_indices,
         workspace.d_cluster_indices_sorted,
         n_faces,
         0,
-        32,
-        stream);
+        32);
     CUDA_SAFE_CALL(cudaEventRecord(events.sort_stop, stream));
 
     build_state.cluster_indices = workspace.d_cluster_indices_sorted;

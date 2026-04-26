@@ -57,13 +57,13 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
     prof.record_start(Stage::Leaves);
     CUDA_SAFE_CALL(cudaMemsetAsync(parents, INVALID_INDEX, sizeof(unsigned int) * n_nodes_capacity, stream));
     CUDA_SAFE_CALL(cudaMemcpyAsync(n_clusters, &n_faces, sizeof(n_faces), cudaMemcpyHostToDevice, stream));
-    cuda::hploc::build_leaves_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(
-        scene.d_faces,
-        n_faces,
-        scene.d_vertices,
-        nodes,
-        primitives_aabb,
-        clusters);
+    // TODO Fi
+    // cuda::hploc::build_leaves_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(
+    //     scene.d_faces,
+    //     n_faces,
+    //     scene.d_vertices,
+    //     nodes,
+    //     clusters);
     cuda::fill_indices(stream, clusters, n_faces);
     prof.record_stop(Stage::Leaves);
 
@@ -86,13 +86,14 @@ RayTracingResult run_hploc_wide(cudaStream_t stream, const cuda::Scene& scene, c
 
     prof.record_start(Stage::Build);
     constexpr size_t block_size = 128;
-    cuda::hploc::build_kernel<<<div_ceil(n_faces, block_size), block_size, 0, stream>>>(
-        parents,
-        morton_codes_sorted,
-        nodes,
-        clusters_sorted,
-        n_clusters,
-        n_faces);
+    // cuda::hploc::build_kernel<<<div_ceil(n_faces, block_size), block_size, 0, stream>>>(
+    //     parents,
+    //     tree_parents,
+    //     morton_codes_sorted,
+    //     nodes,
+    //     clusters_sorted,
+    //     n_clusters,
+    //     n_faces);
     prof.record_stop(Stage::Build);
 
     prof.record_start(Stage::Conversion);

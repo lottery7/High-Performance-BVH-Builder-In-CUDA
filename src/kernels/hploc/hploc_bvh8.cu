@@ -177,7 +177,7 @@ __device__ static void ploc_merge(
   __threadfence();
 }
 
-namespace cuda::hploc
+namespace cuda::hploc_bvh8
 {
   __global__ void build_kernel(
       unsigned int* __restrict__ parents,
