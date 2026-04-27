@@ -4,19 +4,23 @@
 
 #include "../kernels/helpers/helpers.cuh"
 #include "../kernels/hploc/hploc_bvh2.cuh"
+#include "../kernels/ray_tracing/rt_bvh2.cuh"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
 #include "benchmark.h"
-#include "hploc_bvh2.h"
-#include "kernels/ray_tracing/rt_bvh2.cuh"
+#include "hploc_bvh8.h"
+#include "kernels/hploc/hploc_bvh8.cuh"
+#include "kernels/ray_tracing/rt_bvh8.cuh"
+#include "kernels/ray_tracing/rt_compressed_bvh8.cuh"
 #include "utils/device_buffer.h"
+#include "utils/wide_bvh_sah.h"
 
-#define EXPERIMENT_NAME "H-PLOC BVH2"
+#define EXPERIMENT_NAME "H-PLOC BVH8"
 
 using Stage = benchmark::GpuStageProfiler::Stage;
 const AABB empty_scene = AABB::neutral();
 
-RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
+RayTracingResult run_hploc_bvh8(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
 {
   std::cout << "\n=== Experiment: " EXPERIMENT_NAME << std::endl;
 
@@ -25,7 +29,7 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
   const unsigned int n_faces = scene.n_faces;
   const unsigned int n_nodes_capacity = 2 * n_faces - 1;
 
-  DeviceBuffer<BVH2Node> nodes(n_nodes_capacity, stream);
+  DeviceBuffer<BVH2Node> bvh2_nodes(n_nodes_capacity, stream);
   DeviceBuffer<AABB> scene_aabb(1, stream);
   DeviceBuffer<MortonCode> morton_codes(n_faces, stream);
   DeviceBuffer<MortonCode> morton_codes_sorted(n_faces, stream);
@@ -33,6 +37,14 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
   DeviceBuffer<unsigned int> clusters_sorted(n_faces, stream);
   DeviceBuffer<unsigned int> parents(n_nodes_capacity, stream);
   DeviceBuffer<unsigned int> n_clusters(1, stream);
+
+  DeviceBuffer<BVH8Node> bvh8_nodes(n_nodes_capacity, stream);
+  DeviceBuffer<unsigned long long> tasks(n_faces, stream);
+  DeviceBuffer<unsigned int> n_tasks(1, stream);
+  DeviceBuffer<unsigned int> n_bvh8_nodes(1, stream);
+
+  DeviceBuffer<unsigned int> bvh8_prim_indices(n_faces, stream);
+  DeviceBuffer<unsigned int> n_bvh8_leaves(1, stream);
 
   CUDA_SAFE_CALL(cudaFuncSetAttribute(cuda::hploc::build_kernel, cudaFuncAttributePreferredSharedMemoryCarveout, cudaSharedmemCarveoutMaxL1));
   CUDA_SAFE_CALL(cudaFuncSetCacheConfig(cuda::hploc::build_kernel, cudaFuncCachePreferL1));
@@ -54,7 +66,7 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
         scene.d_faces,
         n_faces,
         scene.d_vertices,
-        nodes,
+        bvh2_nodes,
         clusters,
         scene_aabb);
     prof.record_stop(Stage::Leaves);
@@ -74,21 +86,47 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
 
     prof.record_start(Stage::Build);
     CUDA_SAFE_CALL(cudaMemsetAsync(parents, 0xFF, sizeof(unsigned int) * n_nodes_capacity, stream));
-    cuda::hploc::build_kernel<<<div_ceil(n_faces, 64), 64, 0, stream>>>(parents, morton_codes_sorted, nodes, clusters_sorted, n_clusters, n_faces);
+    cuda::hploc::build_kernel<<<div_ceil(n_faces, 64), 64, 0, stream>>>(
+        parents,
+        morton_codes_sorted,
+        bvh2_nodes,
+        clusters_sorted,
+        n_clusters,
+        n_faces);
     prof.record_stop(Stage::Build);
+
+    prof.record_start(Stage::Conversion);
+    const unsigned long long root_task = cuda::hploc::pack_task(n_nodes_capacity - 1, 0);
+    constexpr unsigned int one = 1;
+    constexpr unsigned int zero = 0;
+    CUDA_SAFE_CALL(cudaMemcpyAsync(n_bvh8_leaves, &zero, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemsetAsync(tasks, 0xFF, sizeof(unsigned long long) * n_faces, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(tasks, &root_task, sizeof(unsigned long long), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(n_tasks, &one, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(n_bvh8_nodes, &one, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
+    cuda::hploc::build_bvh8_kernel<<<div_ceil(n_faces, 64), 64, 0, stream>>>(
+        bvh2_nodes,
+        bvh8_nodes,
+        bvh8_prim_indices,
+        tasks,
+        n_tasks,
+        n_bvh8_nodes,
+        n_bvh8_leaves,
+        n_faces);
+    prof.record_stop(Stage::Conversion);
 
     prof.record_stop(Stage::TotalBuild);
 
     prof.record_start(Stage::RayTracing);
-    cuda::rt_bvh2_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
+    cuda::rt_bvh8_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene.d_vertices,
         scene.d_faces,
-        nodes,
-        n_nodes_capacity - 1,
+        bvh8_nodes,
+        bvh8_prim_indices,
+        0,
         fb.d_face_id,
         fb.d_ao,
-        scene.d_camera,
-        n_faces);
+        scene.d_camera);
     prof.record_stop(Stage::RayTracing);
 
     prof.record_stop(Stage::Total);
@@ -97,7 +135,8 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
     const double total_ms = prof.elapsed_ms(Stage::Total);
 
     if (collect) {
-      prof.collect({Stage::Leaves, Stage::MortonCodes, Stage::Sort, Stage::Build, Stage::TotalBuild, Stage::RayTracing, Stage::Total});
+      prof.collect(
+          {Stage::Leaves, Stage::MortonCodes, Stage::Sort, Stage::Build, Stage::Conversion, Stage::TotalBuild, Stage::RayTracing, Stage::Total});
     }
 
     return total_ms;
@@ -110,6 +149,7 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
   std::cout << EXPERIMENT_NAME " morton times (in ms) - " << prof.median(Stage::MortonCodes) << std::endl;
   std::cout << EXPERIMENT_NAME " sort times (in ms) - " << prof.median(Stage::Sort) << std::endl;
   std::cout << EXPERIMENT_NAME " build kernel times (in ms) - " << prof.median(Stage::Build) << std::endl;
+  std::cout << EXPERIMENT_NAME " conversion times (in ms) - " << prof.median(Stage::Conversion) << std::endl;
   std::cout << EXPERIMENT_NAME " build pipeline times (in ms) - " << prof.median(Stage::TotalBuild) << std::endl;
   std::cout << EXPERIMENT_NAME " build performance: " << build_mtris << " MTris/s" << std::endl;
 
@@ -126,7 +166,11 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
   std::cout << EXPERIMENT_NAME " ray tracing performance: " << mrays << " MRays/s" << std::endl;
   std::cout << EXPERIMENT_NAME " total pipeline times (in ms) - " << prof.median(Stage::Total) << std::endl;
 
-  report_sah_hploc(stream, nodes, n_nodes_capacity, n_faces);
+  unsigned int n_wide_nodes = INVALID_INDEX;
+  CUDA_SAFE_CALL(cudaMemcpyAsync(&n_wide_nodes, n_bvh8_nodes, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
+  CUDA_SYNC_STREAM(stream);
+  curassert(0 < n_wide_nodes && n_wide_nodes <= n_nodes_capacity, 226786315);
+  wide_bvh_sah::report_nexus_bvh8_sah(stream, reinterpret_cast<cuda::nexus_bvh_wide::BVH8Node*>(bvh8_nodes.get()), n_wide_nodes);
 
   RayTracingResult res;
   fb.readback(res.face_ids, res.ao);

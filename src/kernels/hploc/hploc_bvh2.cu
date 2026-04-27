@@ -13,8 +13,6 @@
 
 __device__ __forceinline__ static unsigned int get_lane_id()
 {
-  // threadIdx.x % WARP_SIZE
-  // return threadIdx.x & (WARP_SIZE - 1);
   // TODO Эффект не заметен, но в теории должно помогать (меньше инструкций)
   unsigned int r;
   asm volatile("mov.u32 %0, %%laneid;" : "=r"(r));
@@ -29,19 +27,6 @@ __device__ __forceinline__ static unsigned lanemask_lt()
   return r;
 }
 
-// Потоковая 128-битная запись (Обходит L1/L2 кэш, спасая его для vertices)
-__device__ __forceinline__ void stream_store_uint4(void* dst, const uint4& src)
-{
-  asm volatile("st.global.cs.v4.u32 [%0], {%1, %2, %3, %4};" : : "l"(dst), "r"(src.x), "r"(src.y), "r"(src.z), "r"(src.w) : "memory");
-}
-
-// Потоковая 32-битная запись
-__device__ __forceinline__ void stream_store_uint(unsigned int* dst, unsigned int src)
-{
-  asm volatile("st.global.cs.u32 [%0], %1;" : : "l"(dst), "r"(src) : "memory");
-}
-
-// Экстремально быстрая математика площади через FMA
 __device__ __forceinline__ static float fused_half_area(const AABB& a, const AABB& b)
 {
   float dx = fmaxf(a.max_x, b.max_x) - fminf(a.min_x, b.min_x);

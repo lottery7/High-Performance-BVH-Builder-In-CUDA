@@ -4,10 +4,10 @@
 
 #include "../kernels/helpers/helpers.cuh"
 #include "../kernels/lbvh/lbvh.cuh"
-#include "../kernels/ray_tracing/rt.cuh"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
 #include "benchmark.h"
+#include "kernels/ray_tracing/rt_bvh2.cuh"
 #include "lbvh.h"
 #include "utils/device_buffer.h"
 
@@ -86,11 +86,11 @@ RayTracingResult run_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cud
     prof.record_stop(Stage::TotalBuild);
 
     prof.record_start(Stage::RayTracing);
-    cuda::lbvh::rt_lbvh_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
+    cuda::rt_bvh2_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene_gpu.d_vertices,
         scene_gpu.d_faces,
         bvh,
-        indices_sorted,
+        0,
         fb.d_face_id,
         fb.d_ao,
         scene_gpu.d_camera,

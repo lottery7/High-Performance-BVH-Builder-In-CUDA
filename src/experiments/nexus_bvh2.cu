@@ -10,7 +10,7 @@
 #include "../utils/utils.h"
 #include "benchmark.h"
 #include "kernels/hploc/hploc_bvh2.cuh"
-#include "kernels/ray_tracing/rt.cuh"
+#include "kernels/ray_tracing/rt_bvh2.cuh"
 #include "nexus_bvh2.h"
 
 #define EXPERIMENT_NAME "NexusBVH BVH2"
@@ -124,11 +124,9 @@ RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, c
     CUDA_SAFE_CALL(cudaEventRecord(events.total_start, stream));
 
     build_state.cluster_indices = workspace.d_cluster_indices;
-    CUDA_SAFE_CALL(cudaMemcpyAsync(build_state.scene_bounds, &empty_scene_bounds, sizeof(AABB), cudaMemcpyHostToDevice, stream));
-    CUDA_SAFE_CALL(cudaMemsetAsync(build_state.parent_indices, 0xff, sizeof(unsigned int) * n_faces, stream));
-    CUDA_SAFE_CALL(cudaMemcpyAsync(build_state.cluster_count, &n_faces, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
 
     CUDA_SAFE_CALL(cudaEventRecord(events.scene_bounds_start, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(build_state.scene_bounds, &empty_scene_bounds, sizeof(AABB), cudaMemcpyHostToDevice, stream));
     cuda::nexus_bvh::compute_scene_bounds_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(
         build_state,
         scene.d_faces,
@@ -154,6 +152,8 @@ RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, c
     build_state.cluster_indices = workspace.d_cluster_indices_sorted;
     constexpr unsigned int block_size = 64;
     CUDA_SAFE_CALL(cudaEventRecord(events.build_start, stream));
+    CUDA_SAFE_CALL(cudaMemsetAsync(build_state.parent_indices, 0xff, sizeof(unsigned int) * n_faces, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(build_state.cluster_count, &n_faces, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
     cuda::nexus_bvh::build_bvh2_kernel<<<div_ceil(static_cast<int>(n_faces), static_cast<int>(block_size)), block_size, 0, stream>>>(
         build_state,
         workspace.d_morton_codes_sorted);
@@ -162,10 +162,11 @@ RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, c
     fb.clear();
 
     CUDA_SAFE_CALL(cudaEventRecord(events.rt_start, stream));
-    cuda::hploc::rt_hploc_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
+    cuda::rt_bvh2_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene.d_vertices,
         scene.d_faces,
         d_bvh,
+        max_nodes - 1,
         fb.d_face_id,
         fb.d_ao,
         scene.d_camera,

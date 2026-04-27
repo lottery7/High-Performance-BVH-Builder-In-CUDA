@@ -7,12 +7,49 @@
 #include "../helpers/helpers.cuh"
 #include "../helpers/random_helpers.cu"
 #include "../structs/camera.h"
+#include "kernels/nexus_bvh/nexus_bvh8.cuh"
 
-template <unsigned int Arity>
-static __device__ bool wide_closest_hit(
+using CompressedBVH8Node = cuda::nexus_bvh_wide::BVH8Node;
+using BVH8NodeExplicit = cuda::nexus_bvh_wide::BVH8NodeExplicit;
+
+__device__ __forceinline__ unsigned int count_bits_below(unsigned int x, unsigned int i)
+{
+  const unsigned int mask = (1u << i) - 1u;
+  return __popc(x & mask);
+}
+
+__device__ __forceinline__ AABB decode_child_aabb(const BVH8NodeExplicit& node, unsigned int slot)
+{
+  const float ex = __uint_as_float(static_cast<unsigned int>(node.e[0]) << 23);
+  const float ey = __uint_as_float(static_cast<unsigned int>(node.e[1]) << 23);
+  const float ez = __uint_as_float(static_cast<unsigned int>(node.e[2]) << 23);
+
+  AABB child_aabb;
+  child_aabb.min_x = node.p.x + ex * node.qlox[slot];
+  child_aabb.min_y = node.p.y + ey * node.qloy[slot];
+  child_aabb.min_z = node.p.z + ez * node.qloz[slot];
+  child_aabb.max_x = node.p.x + ex * node.qhix[slot];
+  child_aabb.max_y = node.p.y + ey * node.qhiy[slot];
+  child_aabb.max_z = node.p.z + ez * node.qhiz[slot];
+  return child_aabb;
+}
+
+__device__ __forceinline__ unsigned int decode_internal_child_index(const BVH8NodeExplicit& node, unsigned int slot)
+{
+  return node.childBaseIdx + count_bits_below(node.imask, slot);
+}
+
+__device__ __forceinline__ unsigned int decode_leaf_primitive_index(const BVH8NodeExplicit& node, unsigned int slot, const unsigned int* prim_idx)
+{
+  const unsigned int leaf_offset = node.meta[slot] & 0x1fu;
+  return prim_idx[node.primBaseIdx + leaf_offset];
+}
+
+static __device__ bool hploc_wide8_closest_hit(
     const float3& orig,
     const float3& dir,
-    const WideBVHNode<Arity>* nodes,
+    const CompressedBVH8Node* nodes,
+    const unsigned int* prim_idx,
     const float* vertices,
     const unsigned int* faces,
     float t_min,
@@ -24,27 +61,30 @@ static __device__ bool wide_closest_hit(
   float best_t = FLT_MAX;
   bool hit = false;
 
-  constexpr int stack_capacity = BVH_STACK_SIZE * static_cast<int>(Arity);
+  constexpr int stack_capacity = BVH_STACK_SIZE * 8;
   int stack[stack_capacity];
   int sp = 0;
   stack[sp++] = 0;
 
   while (sp > 0) {
     const int node_idx = stack[--sp];
-    const WideBVHNode<Arity>& node = nodes[node_idx];
+    const auto& node = reinterpret_cast<const BVH8NodeExplicit&>(nodes[node_idx]);
 
-    unsigned int hit_indices[Arity];
-    float hit_t_near[Arity];
+    unsigned int hit_indices[8];
+    float hit_t_near[8];
     unsigned int hit_count = 0;
 
-    for (unsigned int slot = 0; slot < Arity; ++slot) {
-      if ((node.valid_mask & (1u << slot)) == 0u) continue;
+    for (unsigned int slot = 0; slot < 8; ++slot) {
+      if (node.meta[slot] == 0) continue;
+
+      const AABB child_aabb = decode_child_aabb(node, slot);
 
       float t_near, t_far;
-      if (!intersect_ray_aabb(orig, dir, node.child_aabbs[slot], t_min, best_t, t_near, t_far)) continue;
+      if (!intersect_ray_aabb(orig, dir, child_aabb, t_min, best_t, t_near, t_far)) continue;
 
-      if ((node.primitive_mask & (1u << slot)) != 0u) {
-        const unsigned int tri_idx = node.child_indices[slot];
+      const bool internal = (node.imask & (1u << slot)) != 0u;
+      if (!internal) {
+        const unsigned int tri_idx = decode_leaf_primitive_index(node, slot, prim_idx);
         const uint3 face = load_face(faces, tri_idx);
         const float3 v0 = load_vertex(vertices, face.x);
         const float3 v1 = load_vertex(vertices, face.y);
@@ -69,11 +109,11 @@ static __device__ bool wide_closest_hit(
         --insert_pos;
       }
       hit_t_near[insert_pos] = t_near;
-      hit_indices[insert_pos] = node.child_indices[slot];
+      hit_indices[insert_pos] = decode_internal_child_index(node, slot);
       ++hit_count;
     }
 
-    curassert(sp + static_cast<int>(hit_count) < stack_capacity, 245830113);
+    curassert(sp + static_cast<int>(hit_count) < stack_capacity, 23295145);
     for (int i = static_cast<int>(hit_count) - 1; i >= 0; --i) {
       stack[sp++] = static_cast<int>(hit_indices[i]);
     }
@@ -82,16 +122,16 @@ static __device__ bool wide_closest_hit(
   return hit;
 }
 
-template <unsigned int Arity>
-static __device__ bool wide_any_hit_from(
+static __device__ bool hploc_wide8_any_hit_from(
     const float3& orig,
     const float3& dir,
     const float* vertices,
     const unsigned int* faces,
-    const WideBVHNode<Arity>* nodes,
+    const CompressedBVH8Node* nodes,
+    const unsigned int* prim_idx,
     int ignore_face)
 {
-  constexpr int stack_capacity = BVH_STACK_SIZE * static_cast<int>(Arity);
+  constexpr int stack_capacity = BVH_STACK_SIZE * 8;
   int stack[stack_capacity];
   int sp = 0;
   stack[sp++] = 0;
@@ -101,16 +141,19 @@ static __device__ bool wide_any_hit_from(
 
   while (sp > 0) {
     const int node_idx = stack[--sp];
-    const WideBVHNode<Arity>& node = nodes[node_idx];
+    const auto& node = reinterpret_cast<const BVH8NodeExplicit&>(nodes[node_idx]);
 
-    for (unsigned int slot = 0; slot < Arity; ++slot) {
-      if ((node.valid_mask & (1u << slot)) == 0u) continue;
+    for (unsigned int slot = 0; slot < 8; ++slot) {
+      if (node.meta[slot] == 0) continue;
+
+      const AABB child_aabb = decode_child_aabb(node, slot);
 
       float t_near, t_far;
-      if (!intersect_ray_aabb(orig, dir, node.child_aabbs[slot], t_min, best_t, t_near, t_far)) continue;
+      if (!intersect_ray_aabb(orig, dir, child_aabb, t_min, best_t, t_near, t_far)) continue;
 
-      if ((node.primitive_mask & (1u << slot)) != 0u) {
-        const unsigned int tri_idx = node.child_indices[slot];
+      const bool internal = (node.imask & (1u << slot)) != 0u;
+      if (!internal) {
+        const unsigned int tri_idx = decode_leaf_primitive_index(node, slot, prim_idx);
         if (static_cast<int>(tri_idx) == ignore_face) continue;
 
         const uint3 face = load_face(faces, tri_idx);
@@ -123,22 +166,21 @@ static __device__ bool wide_any_hit_from(
         continue;
       }
 
-      curassert(sp < stack_capacity, 420833045);
-      stack[sp++] = static_cast<int>(node.child_indices[slot]);
+      curassert(sp < stack_capacity, 420833046);
+      stack[sp++] = static_cast<int>(decode_internal_child_index(node, slot));
     }
   }
 
   return false;
 }
 
-namespace cuda::hploc
+namespace cuda
 {
-
-  template <unsigned int Arity>
-  __global__ void rt_hploc_wide_kernel(
+  __global__ void rt_compressed_bvh8_kernel(
       const float* vertices,
       const unsigned int* faces,
-      const WideBVHNode<Arity>* bvh_nodes,
+      const nexus_bvh_wide::BVH8Node* bvh_nodes,
+      const unsigned int* prim_idx,
       int* face_id,
       float* ambient_occlusion,
       const CameraView* camera)
@@ -146,7 +188,7 @@ namespace cuda::hploc
     const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned int j = blockIdx.y * blockDim.y + threadIdx.y;
 
-    curassert(camera->magic_bits_guard == CAMERA_VIEW_MAGIC_BITS_GUARD, 144090086);
+    curassert(camera->magic_bits_guard == CAMERA_VIEW_MAGIC_BITS_GUARD, 144090087);
     if (i >= camera->K.width || j >= camera->K.height) return;
 
     float3 ray_origin, ray_direction;
@@ -157,7 +199,7 @@ namespace cuda::hploc
     float v_best = 0.0f;
     int face_id_best = -1;
 
-    wide_closest_hit(ray_origin, ray_direction, bvh_nodes, vertices, faces, 1e-6f, t_best, face_id_best, u_best, v_best);
+    hploc_wide8_closest_hit(ray_origin, ray_direction, bvh_nodes, prim_idx, vertices, faces, 1e-6f, t_best, face_id_best, u_best, v_best);
 
     const unsigned int idx = j * camera->K.width + i;
     face_id[idx] = face_id_best;
@@ -203,26 +245,10 @@ namespace cuda::hploc
             tangent.y * d_local.x + bitangent.y * d_local.y + n.y * d_local.z,
             tangent.z * d_local.x + bitangent.z * d_local.y + n.z * d_local.z);
 
-        if (wide_any_hit_from(offset_origin, d, vertices, faces, bvh_nodes, face_id_best)) ++hits;
+        if (hploc_wide8_any_hit_from(offset_origin, d, vertices, faces, bvh_nodes, prim_idx, face_id_best)) ++hits;
       }
       ao = 1.0f - static_cast<float>(hits) / static_cast<float>(AO_SAMPLES);
     }
     ambient_occlusion[idx] = ao;
   }
-
-  template __global__ void rt_hploc_wide_kernel<4>(
-      const float* vertices,
-      const unsigned int* faces,
-      const WideBVHNode<4>* bvh_nodes,
-      int* face_id,
-      float* ambient_occlusion,
-      const CameraView* camera);
-
-  template __global__ void rt_hploc_wide_kernel<8>(
-      const float* vertices,
-      const unsigned int* faces,
-      const WideBVHNode<8>* bvh_nodes,
-      int* face_id,
-      float* ambient_occlusion,
-      const CameraView* camera);
-}  // namespace cuda::hploc
+}  // namespace cuda

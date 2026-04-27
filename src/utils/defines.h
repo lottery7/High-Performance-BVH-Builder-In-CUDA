@@ -1,6 +1,6 @@
 #pragma once
 
-#define BVH_STACK_SIZE 64
+#define BVH_STACK_SIZE 32
 
 #define DEFAULT_GROUP_SIZE 256
 #define DEFAULT_GROUP_SIZE_X 16
@@ -16,4 +16,4 @@
 #define NO_AMBIENT_OCCLUSION (-1.0f)
 #define INVALID_INDEX 0xFFFFFFFFu
 
-#define RASSERT_ENABLED 0  // enable for debug, disable before performance evaluation/profiling/commiting
+#define RASSERT_ENABLED 1  // enable for debug, disable before performance evaluation/profiling/commiting

@@ -2,255 +2,197 @@
 #include <cuda_runtime.h>
 
 #include "../../utils/utils.h"
-#include "../helpers/geometry_helpers.cu"
 #include "../helpers/helpers.cuh"
 #include "../structs/aabb.h"
-#include "../structs/morton_code.h"
+#include "hploc_bvh8.cuh"
 
-#define SEARCH_RADIUS 8
-#define WARP_SIZE 32
-#define ALL_THREADS 0xFFFFFFFFu
+constexpr unsigned int all_threads = 0xFFFFFFFF;
+constexpr unsigned long long invalid_task = ~0ull;
 
-__device__ __forceinline__ static unsigned int get_lane_id()
+// Функция вычисляет масштаб для одной оси.
+// Возвращает байт экспоненты и float-множитель для квантования.
+__device__ __forceinline__ static void compute_quantization(float min_p, float max_p, uint8_t& exp_out, float& scale_out)
 {
-  // threadIdx.x % WARP_SIZE
-  return threadIdx.x & (WARP_SIZE - 1);
-}
-
-__device__ __forceinline__ static unsigned long long delta(const MortonCode* morton_codes, unsigned int l, unsigned int r)
-{
-  return (static_cast<unsigned long long>(morton_codes[l]) << 32 | l) ^ (static_cast<unsigned long long>(morton_codes[r]) << 32 | r);
-}
-
-__device__ __forceinline__ static unsigned int find_parent_id(const MortonCode* morton_codes, unsigned int n_faces, unsigned int l, unsigned int r)
-{
-  if (l == 0 || (r != n_faces - 1 && delta(morton_codes, r, r + 1) < delta(morton_codes, l - 1, l))) {
-    return r;
-  }
-  return l - 1;
-}
-
-__device__ __forceinline__ static unsigned int load_cluster_id(
-    unsigned int start,
-    unsigned int end,
-    int offset,
-    const unsigned int* __restrict__ cluster_ids,
-    unsigned int& cluster_id)
-{
-  curassert(start <= end, 2349005);
-  int index = static_cast<int>(get_lane_id()) - offset;
-  // Загружаем до WARP_SIZE / 2 кластеров
-  bool is_valid = index >= 0 && index < min(end - start, WARP_SIZE / 2);
-  if (is_valid) cluster_id = cluster_ids[start + index];
-  // Количество валидных кластеров во всем ворпе
-  unsigned int n_valid_clusters = __popc(__ballot_sync(ALL_THREADS, is_valid && cluster_id != INVALID_INDEX));
-  return n_valid_clusters;
-}
-
-__device__ __forceinline__ static AABB shfl_sync(unsigned mask, AABB aabb, int src_lane)
-{
-  return {
-      __shfl_sync(mask, aabb.min_x, src_lane),
-      __shfl_sync(mask, aabb.min_y, src_lane),
-      __shfl_sync(mask, aabb.min_z, src_lane),
-      __shfl_sync(mask, aabb.max_x, src_lane),
-      __shfl_sync(mask, aabb.max_y, src_lane),
-      __shfl_sync(mask, aabb.max_z, src_lane),
-  };
-}
-
-__device__ static unsigned int merge_clusters_create_bvh2_node(
-    unsigned int warp_n_clusters,
-    unsigned int nn_lane_id,
-    unsigned int& cluster_id,
-    AABB& cluster_aabb,
-    unsigned int* __restrict__ n_clusters,
-    BVH2Node* __restrict__ nodes)
-{
-  unsigned int lane_id = get_lane_id();
-  // lane_id ближайшего соседа ближайшего соседа
-  unsigned int nn_nn_lane_id = __shfl_sync(ALL_THREADS, nn_lane_id, nn_lane_id);
-  // Проверка NN[NN[i]] == i
-  bool is_mutual_nn = lane_id < warp_n_clusters && lane_id == nn_nn_lane_id;
-  // Мержим только левым ребенком
-  bool should_merge = is_mutual_nn && lane_id < nn_lane_id;
-
-  unsigned int merge_mask = __ballot_sync(ALL_THREADS, should_merge);
-  unsigned int merges_count = __popc(merge_mask);
-
-  unsigned int cluster_start_id = INVALID_INDEX;
-  if (lane_id == 0) cluster_start_id = atomicAdd(n_clusters, merges_count);
-  cluster_start_id = __shfl_sync(ALL_THREADS, cluster_start_id, 0);
-  curassert(cluster_start_id != INVALID_INDEX, 66602491);
-
-  unsigned int neighbor_cluster_id = __shfl_sync(ALL_THREADS, cluster_id, nn_lane_id);
-  AABB neighbor_cluster_aabb = shfl_sync(ALL_THREADS, cluster_aabb, nn_lane_id);
-
-  if (should_merge) {
-    cluster_aabb = AABB::union_of(cluster_aabb, neighbor_cluster_aabb);
-    BVH2Node node{cluster_aabb, cluster_id, neighbor_cluster_id};
-    // Число потоков ворпа с id меньше нашего, которые тоже будут делать merge
-    cluster_id = cluster_start_id + __popc(merge_mask & (1u << lane_id) - 1);
-    nodes[cluster_id] = node;
+  float extent = max_p - min_p;
+  if (extent <= 1e-8f) {
+    exp_out = 127;
+    scale_out = 1.0f;
+    return;
   }
 
-  // Для обеспечения occupancy убираем потоки, которые соответствуют смерженым кластерам (из двух оставляем один)
-  const unsigned int active_mask = __ballot_sync(ALL_THREADS, should_merge || !is_mutual_nn);
-
-  // find nth set bit - n-ый включенный бит - lane_id потока, который должен занять наш поток
-  const int new_lane_id = __fns(active_mask, 0, lane_id + 1);
-  cluster_id = __shfl_sync(ALL_THREADS, cluster_id, new_lane_id);
-  if (new_lane_id == -1) cluster_id = INVALID_INDEX;
-  cluster_aabb = shfl_sync(ALL_THREADS, cluster_aabb, new_lane_id);
-
-  return warp_n_clusters - merges_count;
+  float x = extent / 255.0f;
+  int exp = static_cast<int>(ceilf(log2f(x)));
+  exp_out = static_cast<uint8_t>(exp + 127);
+  scale_out = exp2f(static_cast<float>(exp));
 }
 
-__device__ __forceinline__ unsigned long long float_as_uint64(float f) { return __float_as_uint(f); }
-
-__device__ __forceinline__ uint2 shfl_sync(unsigned int mask, uint2 value, unsigned int src_lane)
+// Функции сжатия. Округляем ВНИЗ для минимума и ВВЕРХ для максимума (чтобы бокс не стал меньше)
+__device__ __forceinline__ static uint8_t quantize_lo(float p, float p_base, float scale)
 {
-  return make_uint2(__shfl_sync(mask, value.x, static_cast<int>(src_lane)), __shfl_sync(mask, value.y, static_cast<int>(src_lane)));
+  float val = floorf((p - p_base) / scale);
+  return static_cast<uint8_t>(fminf(fmaxf(val, 0.0f), 255.0f));
 }
 
-__device__ __forceinline__ unsigned int find_nearest_neighbor(unsigned int warp_n_clusters, AABB cluster_aabb)
+__device__ __forceinline__ static uint8_t quantize_hi(float p, float p_base, float scale)
 {
-  curassert(warp_n_clusters <= WARP_SIZE, 81387392);
-  const unsigned int lane_id = get_lane_id();
-  uint2 nearest = make_uint2(INVALID_INDEX, INVALID_INDEX);
+  float val = ceilf((p - p_base) / scale);
+  return static_cast<uint8_t>(fminf(fmaxf(val, 0.0f), 255.0f));
+}
 
-  for (unsigned int radius = 1; radius <= SEARCH_RADIUS; ++radius) {
-    const unsigned int neighbor_index = lane_id + radius;
-    unsigned int area = ~0u;
-    AABB right_neighbor_aabb = shfl_sync(ALL_THREADS, cluster_aabb, neighbor_index);
+__device__ __forceinline__ static BVH2Node load_bvh2_node(const BVH2Node* __restrict__ nodes, unsigned int index)
+{
+  const uint4* ptr = reinterpret_cast<const uint4*>(&nodes[index]);
+  uint4 v0 = __ldg(&ptr[0]);
+  uint4 v1 = __ldg(&ptr[1]);
+  BVH2Node node;
+  uint4* node_ptr = reinterpret_cast<uint4*>(&node);
+  node_ptr[0] = v0;
+  node_ptr[1] = v1;
+  return node;
+}
 
-    if (neighbor_index < warp_n_clusters) {
-      area = __float_as_uint(AABB::union_of(right_neighbor_aabb, cluster_aabb).surface_area());
-      if (area < nearest.x) nearest = make_uint2(area, neighbor_index);
+__device__ __forceinline__ static int find_largest_internal_frontier_node(
+    const BVH2Node* bvh2_nodes,
+    const unsigned int* frontier,
+    unsigned int frontier_size)
+{
+  int best_index = -1;
+  float best_area = -1.0f;
+  for (unsigned int i = 0; i < frontier_size; ++i) {
+    const BVH2Node& candidate = load_bvh2_node(bvh2_nodes, frontier[i]);
+    if (candidate.is_leaf()) continue;
+    const float area = candidate.aabb.surface_area();
+    if (area > best_area) {
+      best_area = area;
+      best_index = static_cast<int>(i);
     }
-
-    uint2 neighbor_nn = shfl_sync(ALL_THREADS, nearest, neighbor_index);
-    if (area < neighbor_nn.x) neighbor_nn = make_uint2(area, lane_id);
-
-    nearest = shfl_sync(ALL_THREADS, neighbor_nn, lane_id - radius);
   }
-
-  return nearest.y;
+  return best_index;
 }
 
-__device__ static void ploc_merge(
-    unsigned int target_lane_id,
-    unsigned int left,
-    unsigned int right,
-    unsigned int split,
-    bool is_final,
-    BVH2Node* __restrict__ nodes,
-    unsigned int* __restrict__ cluster_ids,
-    unsigned int* __restrict__ n_clusters)
+namespace cuda::hploc
 {
-  unsigned int l_start = __shfl_sync(ALL_THREADS, left, target_lane_id);
-  unsigned int l_end = __shfl_sync(ALL_THREADS, split, target_lane_id);
-  unsigned int r_end = __shfl_sync(ALL_THREADS, right, target_lane_id) + 1;
-  unsigned int r_start = l_end;
-  unsigned int lane_id = get_lane_id();
-  unsigned int cluster_id = INVALID_INDEX;
-
-  curassert(l_start <= l_end, 150462);
-  curassert(l_end <= r_end, 70862572);
-
-  unsigned int n_left_clusters = load_cluster_id(l_start, l_end, 0, cluster_ids, cluster_id);
-  unsigned int n_right_clusters = load_cluster_id(r_start, r_end, n_left_clusters, cluster_ids, cluster_id);
-  unsigned int warp_n_clusters = n_left_clusters + n_right_clusters;
-
-  AABB cluster_aabb;
-  if (lane_id < warp_n_clusters) {
-    cluster_aabb = nodes[cluster_id].aabb;
-  }
-  unsigned int threshold = __shfl_sync(ALL_THREADS, is_final, target_lane_id) ? 1 : WARP_SIZE / 2;
-
-  while (warp_n_clusters > threshold) {
-    unsigned int nn_lane_id = find_nearest_neighbor(warp_n_clusters, cluster_aabb);
-    warp_n_clusters = merge_clusters_create_bvh2_node(warp_n_clusters, nn_lane_id, cluster_id, cluster_aabb, n_clusters, nodes);
-  }
-
-  if (lane_id < n_left_clusters + n_right_clusters) cluster_ids[l_start + lane_id] = cluster_id;
-  __threadfence();
-}
-
-namespace cuda::hploc_bvh8
-{
-  __global__ void build_kernel(
-      unsigned int* __restrict__ parents,
-      const MortonCode* __restrict__ morton_codes,
-      BVH2Node* __restrict__ nodes,
-      unsigned int* __restrict__ cluster_ids,
-      unsigned int* __restrict__ n_clusters,
+  __global__ void build_bvh8_kernel(
+      const BVH2Node* __restrict__ bvh2_nodes,
+      BVH8Node* __restrict__ bvh8_nodes,
+      unsigned int* __restrict__ bvh8_prim_indices,
+      volatile unsigned long long* __restrict__ tasks,
+      unsigned int* __restrict__ n_tasks,
+      unsigned int* __restrict__ n_bvh8_nodes,
+      unsigned int* __restrict__ n_bvh8_leaves,
       unsigned int n_faces)
   {
-    const unsigned int index = blockDim.x * blockIdx.x + threadIdx.x;
-    unsigned int left = index;
-    unsigned int right = index;
-    unsigned int split = INVALID_INDEX;
-    bool is_active = index < n_faces;
+    const unsigned int task_id = blockIdx.x * blockDim.x + threadIdx.x;
+    if (task_id >= n_faces) return;
 
-    while (__ballot_sync(ALL_THREADS, is_active)) {
-      if (is_active) {
-        unsigned int prev_id;
+    // Busy waiting тасок воркерами
+    unsigned long long task = invalid_task;
+    while (task == invalid_task) {
+      task = tasks[task_id];
+    }
 
-        if (find_parent_id(morton_codes, n_faces, left, right) == right) {
-          prev_id = atomicExch(&parents[right], left);
-          if (prev_id != INVALID_INDEX) {
-            split = right + 1;
-            right = prev_id;
-          }
+    // Одну из тасок передаем сами себе для экономии
+    while (true) {
+      const unsigned int bvh2_node_index = unpack_bvh2_node_index(task);
+      const unsigned int bvh8_node_index = unpack_bvh8_node_index(task);
+
+      if (bvh8_node_index == INVALID_INDEX) {
+        return;
+      }
+
+      const BVH2Node& binary_node = load_bvh2_node(bvh2_nodes, bvh2_node_index);
+
+      // Если у нас больше одного примитива, то корень не может быть листом. Значит таску положил другой воркер.
+      // Лист мы кладем только с bvh8_node_index = INVALID_INDEX, а этот случай уже был пройден выше.
+      curassert(!binary_node.is_leaf(), 24341771);
+
+      // Ищем своих детей: расширяем бинарную ноду, записываем индексы во frontier
+      unsigned int frontier[8];
+      frontier[0] = binary_node.left_child_index;
+      frontier[1] = binary_node.right_child_index;
+      unsigned int frontier_size = 2;
+
+      while (frontier_size < 8) {
+        const int expand_index = find_largest_internal_frontier_node(bvh2_nodes, frontier, frontier_size);
+        if (expand_index < 0) break;
+
+        BVH2Node expanded = load_bvh2_node(bvh2_nodes, frontier[expand_index]);
+        frontier[expand_index] = expanded.left_child_index;
+        frontier[frontier_size++] = expanded.right_child_index;
+      }
+
+      // 1. Инициализируем базовую точку родителя (p)
+      BVH8Node bvh8_node{};
+      bvh8_node.p_x = binary_node.aabb.min_x;
+      bvh8_node.p_y = binary_node.aabb.min_y;
+      bvh8_node.p_z = binary_node.aabb.min_z;
+
+      // 2. Считаем масштаб и экспоненты
+      float scale_x, scale_y, scale_z;
+      compute_quantization(binary_node.aabb.min_x, binary_node.aabb.max_x, bvh8_node.e_x, scale_x);
+      compute_quantization(binary_node.aabb.min_y, binary_node.aabb.max_y, bvh8_node.e_y, scale_y);
+      compute_quantization(binary_node.aabb.min_z, binary_node.aabb.max_z, bvh8_node.e_z, scale_z);
+
+      // 3. Считаем, сколько у нас внутренних узлов и листьев
+      unsigned int n_internal = 0;
+      unsigned int n_leaves = 0;
+      for (unsigned int i = 0; i < frontier_size; ++i) {
+        if (load_bvh2_node(bvh2_nodes, frontier[i]).is_leaf())
+          n_leaves++;
+        else
+          n_internal++;
+      }
+
+      // 4. Выделяем память (базовые индексы) один раз на всю ноду
+      bvh8_node.child_base_idx = atomicAdd(n_bvh8_nodes, n_internal);
+      bvh8_node.prim_base_idx = (n_leaves > 0) ? atomicAdd(n_bvh8_leaves, n_leaves) : 0;
+      bvh8_node.imask = 0;
+
+      const unsigned int new_tasks_start = atomicAdd(n_tasks, frontier_size - 1u);
+      unsigned int next_internal_offset = 0;
+      unsigned int next_leaf_offset = 0;
+
+      // 5. Заполняем слоты (прямая укладка, без хитрой сортировки)
+      for (unsigned int i = 0; i < 8; ++i) {
+        bvh8_node.meta[i] = 0;  // Инициализируем нулем
+
+        if (i >= frontier_size) continue;  // Пустой слот
+
+        const BVH2Node& child = load_bvh2_node(bvh2_nodes, frontier[i]);
+
+        // Квантуем AABB ребенка
+        bvh8_node.q_lo_x[i] = quantize_lo(child.aabb.min_x, bvh8_node.p_x, scale_x);
+        bvh8_node.q_hi_x[i] = quantize_hi(child.aabb.max_x, bvh8_node.p_x, scale_x);
+        bvh8_node.q_lo_y[i] = quantize_lo(child.aabb.min_y, bvh8_node.p_y, scale_y);
+        bvh8_node.q_hi_y[i] = quantize_hi(child.aabb.max_y, bvh8_node.p_y, scale_y);
+        bvh8_node.q_lo_z[i] = quantize_lo(child.aabb.min_z, bvh8_node.p_z, scale_z);
+        bvh8_node.q_hi_z[i] = quantize_hi(child.aabb.max_z, bvh8_node.p_z, scale_z);
+
+        unsigned long long new_task = invalid_task;
+
+        if (child.is_leaf()) {
+          uint8_t count = 0b001;
+          bvh8_node.meta[i] = (count << 5) | (next_leaf_offset & 0x1F);
+          bvh8_prim_indices[bvh8_node.prim_base_idx + next_leaf_offset] = child.right_child_index;
+          next_leaf_offset++;
+          new_task = pack_task(frontier[i], INVALID_INDEX);
         } else {
-          prev_id = atomicExch(&parents[left - 1], right);
-          if (prev_id != INVALID_INDEX) {
-            split = left;
-            left = prev_id;
-          }
+          bvh8_node.imask |= (1u << i);
+          bvh8_node.meta[i] = (0b001 << 5) | ((24 + i) & 0x1F);
+          unsigned int child_idx = bvh8_node.child_base_idx + next_internal_offset;
+          next_internal_offset++;
+          new_task = pack_task(frontier[i], child_idx);
         }
 
-        if (prev_id == INVALID_INDEX) is_active = false;
+        // Раздаем таски
+        if (i == 0)
+          task = new_task;
+        else
+          tasks[new_tasks_start + i - 1] = new_task;
       }
 
-      curassert(left <= right, 67224631);
-      unsigned int size = right - left + 1;
-      bool is_final = is_active && size == n_faces;
-      unsigned int warp_mask = __ballot_sync(ALL_THREADS, is_active && (size > WARP_SIZE / 2) || is_final);
-
-      while (warp_mask) {
-        unsigned int target_lane_id = __ffs(warp_mask) - 1;
-        curassert(get_lane_id() != target_lane_id || split != INVALID_INDEX, 94341937);
-        ploc_merge(target_lane_id, left, right, split, is_final, nodes, cluster_ids, n_clusters);
-        warp_mask = warp_mask & (warp_mask - 1);
-      }
+      // 6. Сохраняем готовую 80-байтную ноду в память
+      bvh8_nodes[bvh8_node_index] = bvh8_node;
     }
-  }
-
-  __global__ void build_leaves_kernel(
-      const unsigned int* __restrict__ faces,
-      const unsigned int n_faces,
-      const float* __restrict__ vertices,
-      BVH2Node* __restrict__ nodes,
-      AABB* __restrict__ primitives_aabb,
-      unsigned int* __restrict__ clusters)
-  {
-    const unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
-    if (index >= n_faces) return;
-
-    const unsigned int base_index = 3 * index;
-    const unsigned int f0 = faces[base_index + 0];
-    const unsigned int f1 = faces[base_index + 1];
-    const unsigned int f2 = faces[base_index + 2];
-
-    const float3 v0 = load_vertex(vertices, f0);
-    const float3 v1 = load_vertex(vertices, f1);
-    const float3 v2 = load_vertex(vertices, f2);
-
-    AABB aabb = AABB::from_triangle(v0, v1, v2);
-    nodes[index] = {aabb, INVALID_INDEX, index};
-    clusters[index] = index;
-    primitives_aabb[index] = aabb;
   }
 }  // namespace cuda::hploc

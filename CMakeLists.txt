@@ -23,20 +23,18 @@ set(CUDA_SOURCES
         src/experiments/nexus_bvh8.cu
         src/experiments/lbvh.cu
         src/experiments/hploc_bvh2.cu
-        src/experiments/hploc_wide.cu
+        src/experiments/hploc_bvh8.cu
         src/kernels/helpers/camera_helpers.cuh
         src/kernels/helpers/geometry_helpers.cu
         src/kernels/helpers/random_helpers.cu
-        src/kernels/ray_tracing/rt_lbvh.cu
-        src/kernels/ray_tracing/rt_hploc.cu
-        src/kernels/ray_tracing/rt_hploc_wide.cu
-        src/kernels/ray_tracing/rt_hploc_bvh8.cu
+        src/kernels/ray_tracing/rt_bvh2.cu
+        src/kernels/ray_tracing/rt_bvh8.cu
+        src/kernels/ray_tracing/rt_compressed_bvh8.cu
         src/kernels/helpers/fill.cu
         src/kernels/helpers/fill_indices.cu
         src/kernels/lbvh/lbvh.cu
         src/kernels/hploc/hploc_bvh2.cu
         src/kernels/hploc/hploc_bvh8.cu
-        src/kernels/hploc/hploc_wide.cu
         src/kernels/nexus_bvh/nexus_bvh.cu
         src/kernels/nexus_bvh/nexus_bvh_wide.cu
         src/kernels/helpers/compute_morton_codes.cu
