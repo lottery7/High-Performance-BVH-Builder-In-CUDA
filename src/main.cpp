@@ -15,7 +15,7 @@
 
 #include "experiments/common.h"
 #include "experiments/hploc_bvh2.h"
-#include "experiments/hploc_wide.h"
+#include "experiments/hploc_bvh8.h"
 #include "experiments/lbvh.h"
 #include "experiments/nexus_bvh2.h"
 #include "experiments/nexus_bvh8.h"
@@ -110,14 +110,9 @@ namespace
             [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) { return run_hploc(s, scene, fb, dir); },
         },
         {
-            "hploc_bvh4",
-            {"hploc_bvh4"},
-            [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) { return run_hploc_wide<4>(s, scene, fb, dir); },
-        },
-        {
             "hploc_bvh8",
             {"hploc_bvh8"},
-            [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) { return run_hploc_wide<8>(s, scene, fb, dir); },
+            [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) { return run_hploc_bvh8(s, scene, fb, dir); },
         },
         {
             "nexus_bvh2",

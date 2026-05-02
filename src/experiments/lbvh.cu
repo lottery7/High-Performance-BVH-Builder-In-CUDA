@@ -4,10 +4,10 @@
 
 #include "../kernels/helpers/helpers.cuh"
 #include "../kernels/lbvh/lbvh.cuh"
-#include "../kernels/ray_tracing/rt.cuh"
 #include "../utils/defines.h"
 #include "../utils/utils.h"
 #include "benchmark.h"
+#include "kernels/ray_tracing/rt_bvh2.cuh"
 #include "lbvh.h"
 #include "utils/device_buffer.h"
 
@@ -33,6 +33,21 @@ RayTracingResult run_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cud
   DeviceBuffer<unsigned int> indices_sorted(n_faces, stream);
   DeviceBuffer<unsigned int> parents(n_nodes, stream);
   DeviceBuffer<unsigned int> flags(n_faces - 1, stream);
+
+  size_t temp_storage_bytes = 0;
+  CUDA_SAFE_CALL(
+      cub::DeviceRadixSort::SortPairs(
+          nullptr,
+          temp_storage_bytes,
+          morton_codes.get(),
+          morton_codes_sorted.get(),
+          indices.get(),
+          indices_sorted.get(),
+          n_faces,
+          0,
+          32,
+          stream));
+  DeviceBuffer<uint8_t> temp_storage(temp_storage_bytes, stream);
 
   CUDA_SYNC_STREAM(stream);
 
@@ -65,7 +80,18 @@ RayTracingResult run_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cud
     prof.record_stop(Stage::MortonCodes);
 
     prof.record_start(Stage::Sort);
-    cuda::sort_pairs(stream, morton_codes.get(), morton_codes_sorted.get(), indices.get(), indices_sorted.get(), n_faces, 0, 32);
+    CUDA_SAFE_CALL(
+        cub::DeviceRadixSort::SortPairs(
+            temp_storage.get(),
+            temp_storage_bytes,
+            morton_codes.get(),
+            morton_codes_sorted.get(),
+            indices.get(),
+            indices_sorted.get(),
+            n_faces,
+            0,
+            32,
+            stream));
     prof.record_stop(Stage::Sort);
 
     prof.record_start(Stage::Build);
@@ -86,11 +112,11 @@ RayTracingResult run_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cud
     prof.record_stop(Stage::TotalBuild);
 
     prof.record_start(Stage::RayTracing);
-    cuda::lbvh::rt_lbvh_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
+    cuda::rt_bvh2_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene_gpu.d_vertices,
         scene_gpu.d_faces,
         bvh,
-        indices_sorted,
+        0,
         fb.d_face_id,
         fb.d_ao,
         scene_gpu.d_camera,

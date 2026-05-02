@@ -34,6 +34,8 @@ namespace cuda::nexus_bvh
     unsigned int* d_cluster_indices_sorted = nullptr;
     unsigned int* d_parent_indices = nullptr;
     unsigned int* d_cluster_count = nullptr;
+    void* d_sort_temp_storage = nullptr;
+    size_t sort_temp_storage_bytes = 0;
   };
 
   void allocate_workspace(cudaStream_t stream, Workspace& workspace, unsigned int n_faces);

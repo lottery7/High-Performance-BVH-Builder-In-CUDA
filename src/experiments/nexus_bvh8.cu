@@ -11,7 +11,7 @@
 #include "../utils/utils.h"
 #include "../utils/wide_bvh_sah.h"
 #include "benchmark.h"
-#include "kernels/ray_tracing/rt.cuh"
+#include "kernels/ray_tracing/rt_bvh8.cuh"
 #include "nexus_bvh8.h"
 
 #define EXPERIMENT_NAME "NexusBVH BVH8"
@@ -177,15 +177,17 @@ RayTracingResult run_nexus_bvh8(cudaStream_t stream, const cuda::Scene& scene, c
     CUDA_SAFE_CALL(cudaEventRecord(events.morton_stop, stream));
 
     CUDA_SAFE_CALL(cudaEventRecord(events.sort_start, stream));
-    cuda::sort_pairs(
-        stream,
+    cub::DeviceRadixSort::SortPairs(
+        workspace.d_sort_temp_storage,
+        workspace.sort_temp_storage_bytes,
         workspace.d_morton_codes,
         workspace.d_morton_codes_sorted,
         workspace.d_cluster_indices,
         workspace.d_cluster_indices_sorted,
         n_faces,
         0,
-        32);
+        32,
+        stream);
     CUDA_SAFE_CALL(cudaEventRecord(events.sort_stop, stream));
 
     build_state.cluster_indices = workspace.d_cluster_indices_sorted;
@@ -210,11 +212,12 @@ RayTracingResult run_nexus_bvh8(cudaStream_t stream, const cuda::Scene& scene, c
     fb.clear();
 
     CUDA_SAFE_CALL(cudaEventRecord(events.rt_start, stream));
-    cuda::hploc::rt_hploc_bvh8_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
+    cuda::rt_bvh8_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene.d_vertices,
         scene.d_faces,
-        d_wide_bvh,
+        reinterpret_cast<BVH8Node*>(d_wide_bvh),
         d_prim_idx,
+        0,
         fb.d_face_id,
         fb.d_ao,
         scene.d_camera);

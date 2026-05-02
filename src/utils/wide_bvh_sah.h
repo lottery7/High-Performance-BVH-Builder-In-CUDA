@@ -31,7 +31,7 @@ namespace wide_bvh_sah
   inline unsigned int count_bits_below(unsigned int bits, unsigned int slot)
   {
     const unsigned int mask = slot == 0 ? 0u : ((1u << slot) - 1u);
-    return static_cast<unsigned int>(__builtin_popcount(bits & mask));
+    return static_cast<unsigned int>(cuda::std::__popcount(bits & mask));
   }
 
   inline float uint_bits_to_float(unsigned int bits)

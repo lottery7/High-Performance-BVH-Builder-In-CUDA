@@ -1,6 +1,6 @@
 #pragma once
 
-#define BVH_STACK_SIZE 64
+#define BVH_STACK_SIZE 32
 
 #define DEFAULT_GROUP_SIZE 256
 #define DEFAULT_GROUP_SIZE_X 16

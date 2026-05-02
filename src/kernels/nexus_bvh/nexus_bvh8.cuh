@@ -1,8 +1,8 @@
 #pragma once
 
-#include <cstdint>
-
 #include <cuda_runtime.h>
+
+#include <cstdint>
 
 #include "../structs/aabb.h"
 #include "../structs/bvh_node.h"
@@ -58,10 +58,8 @@ namespace cuda::nexus_bvh_wide
   };
 
   __global__ void build_bvh8_kernel(BVH8BuildState buildState);
-}
+}  // namespace cuda::nexus_bvh_wide
 
 static_assert(sizeof(cuda::nexus_bvh_wide::AABB) == sizeof(::AABB), "Nexus wide AABB layout mismatch");
 static_assert(sizeof(cuda::nexus_bvh_wide::BVH2Node) == sizeof(BVH2Node), "Nexus wide BVH2 node layout mismatch");
-static_assert(
-    sizeof(cuda::nexus_bvh_wide::BVH8NodeExplicit) == sizeof(cuda::nexus_bvh_wide::BVH8Node),
-    "Nexus wide BVH8 node layout mismatch");
+static_assert(sizeof(cuda::nexus_bvh_wide::BVH8NodeExplicit) == sizeof(cuda::nexus_bvh_wide::BVH8Node), "Nexus wide BVH8 node layout mismatch");
