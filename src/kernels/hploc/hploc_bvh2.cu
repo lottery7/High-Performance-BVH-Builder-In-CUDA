@@ -29,19 +29,6 @@ __device__ __forceinline__ static unsigned lanemask_lt()
   return r;
 }
 
-// Потоковая 128-битная запись (Обходит L1/L2 кэш, спасая его для vertices)
-__device__ __forceinline__ void stream_store_uint4(void* dst, const uint4& src)
-{
-  asm volatile("st.global.cs.v4.u32 [%0], {%1, %2, %3, %4};" : : "l"(dst), "r"(src.x), "r"(src.y), "r"(src.z), "r"(src.w) : "memory");
-}
-
-// Потоковая 32-битная запись
-__device__ __forceinline__ void stream_store_uint(unsigned int* dst, unsigned int src)
-{
-  asm volatile("st.global.cs.u32 [%0], %1;" : : "l"(dst), "r"(src) : "memory");
-}
-
-// Экстремально быстрая математика площади через FMA
 __device__ __forceinline__ static float fused_half_area(const AABB& a, const AABB& b)
 {
   float dx = fmaxf(a.max_x, b.max_x) - fminf(a.min_x, b.min_x);
@@ -303,6 +290,7 @@ namespace cuda::hploc
       unsigned int size = right - left + 1;
       bool is_final = is_active && size == n_faces;
       unsigned int warp_mask = __ballot_sync(ALL_THREADS, is_active && (size > MERGING_THRESHOLD) || is_final);
+      const bool has_merge_work = warp_mask != 0;
 
       while (warp_mask) {
         unsigned int target_lane_id = __ffs(warp_mask) - 1;
@@ -310,6 +298,9 @@ namespace cuda::hploc
         ploc_merge(target_lane_id, left, right, split, is_final, nodes, cluster_ids, n_clusters);
         warp_mask &= (warp_mask - 1);
       }
+
+      // TODO Перенос __threadfence из ploc_merge дал небольшой прирост по производительности
+      if (has_merge_work) __threadfence();
     }
   }
 

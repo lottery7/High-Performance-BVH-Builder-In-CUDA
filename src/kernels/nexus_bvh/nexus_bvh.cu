@@ -388,6 +388,19 @@ namespace cuda::nexus_bvh
     CUDA_SAFE_CALL(cudaMallocAsync(&workspace.d_cluster_indices_sorted, sizeof(unsigned int) * n_faces, stream));
     CUDA_SAFE_CALL(cudaMallocAsync(&workspace.d_parent_indices, sizeof(unsigned int) * n_faces, stream));
     CUDA_SAFE_CALL(cudaMallocAsync(&workspace.d_cluster_count, sizeof(unsigned int), stream));
+
+    cub::DeviceRadixSort::SortPairs(
+          nullptr,
+          workspace.sort_temp_storage_bytes,
+          workspace.d_morton_codes,
+          workspace.d_morton_codes_sorted,
+          workspace.d_cluster_indices,
+          workspace.d_cluster_indices_sorted,
+          n_faces,
+          0,
+          32,
+          stream);
+    CUDA_SAFE_CALL(cudaMallocAsync(&workspace.d_sort_temp_storage, workspace.sort_temp_storage_bytes, stream));
   }
 
   void free_workspace(cudaStream_t stream, Workspace& workspace)

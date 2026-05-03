@@ -1,8 +1,5 @@
-#include <libbase/stats.h>
-
 #include <cfloat>
 #include <cub/device/device_radix_sort.cuh>
-#include <vector>
 
 #include "../kernels/helpers/helpers.cuh"
 #include "../kernels/nexus_bvh/nexus_bvh2.cuh"
@@ -10,80 +7,12 @@
 #include "../utils/utils.h"
 #include "benchmark.h"
 #include "kernels/hploc/hploc_bvh2.cuh"
-#include "kernels/ray_tracing/rt.cuh"
+#include "kernels/ray_tracing/rt_bvh2.cuh"
 #include "nexus_bvh2.h"
 
 #define EXPERIMENT_NAME "NexusBVH BVH2"
 
-namespace
-{
-  class StepEvents
-  {
-   public:
-    StepEvents()
-    {
-      create(total_start);
-      create(total_stop);
-      create(scene_bounds_start);
-      create(scene_bounds_stop);
-      create(morton_start);
-      create(morton_stop);
-      create(sort_start);
-      create(sort_stop);
-      create(build_start);
-      create(build_stop);
-      create(rt_start);
-      create(rt_stop);
-    }
-
-    ~StepEvents()
-    {
-      destroy(total_start);
-      destroy(total_stop);
-      destroy(scene_bounds_start);
-      destroy(scene_bounds_stop);
-      destroy(morton_start);
-      destroy(morton_stop);
-      destroy(sort_start);
-      destroy(sort_stop);
-      destroy(build_start);
-      destroy(build_stop);
-      destroy(rt_start);
-      destroy(rt_stop);
-    }
-
-    StepEvents(const StepEvents&) = delete;
-    StepEvents& operator=(const StepEvents&) = delete;
-
-    cudaEvent_t total_start = nullptr;
-    cudaEvent_t total_stop = nullptr;
-    cudaEvent_t scene_bounds_start = nullptr;
-    cudaEvent_t scene_bounds_stop = nullptr;
-    cudaEvent_t morton_start = nullptr;
-    cudaEvent_t morton_stop = nullptr;
-    cudaEvent_t sort_start = nullptr;
-    cudaEvent_t sort_stop = nullptr;
-    cudaEvent_t build_start = nullptr;
-    cudaEvent_t build_stop = nullptr;
-    cudaEvent_t rt_start = nullptr;
-    cudaEvent_t rt_stop = nullptr;
-
-   private:
-    static void create(cudaEvent_t& event) { CUDA_SAFE_CALL(cudaEventCreate(&event)); }
-
-    static void destroy(cudaEvent_t event)
-    {
-      if (event != nullptr) cudaEventDestroy(event);
-    }
-  };
-
-  float elapsed_ms(cudaEvent_t start, cudaEvent_t stop)
-  {
-    float elapsed = 0.0f;
-    CUDA_SAFE_CALL(cudaEventElapsedTime(&elapsed, start, stop));
-    return elapsed;
-  }
-}  // namespace
+using Stage = benchmark::GpuStageProfiler::Stage;
 
 RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
 {
@@ -111,97 +40,81 @@ RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, c
 
   const AABB empty_scene_bounds{FLT_MAX, FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX};
 
-  std::vector<double> scene_bounds_times;
-  std::vector<double> morton_times;
-  std::vector<double> sort_times;
-  std::vector<double> build_kernel_times;
-  std::vector<double> build_times;
-  std::vector<double> rt_times;
-  std::vector<double> total_times;
-  StepEvents events;
+  benchmark::GpuStageProfiler prof(stream, benchmark_iters());
 
   const AdaptiveWarmupResult build_warmup = benchmark::run_adaptive([&](bool collect) {
-    CUDA_SAFE_CALL(cudaEventRecord(events.total_start, stream));
-
     build_state.cluster_indices = workspace.d_cluster_indices;
     CUDA_SAFE_CALL(cudaMemcpyAsync(build_state.scene_bounds, &empty_scene_bounds, sizeof(AABB), cudaMemcpyHostToDevice, stream));
     CUDA_SAFE_CALL(cudaMemsetAsync(build_state.parent_indices, 0xff, sizeof(unsigned int) * n_faces, stream));
     CUDA_SAFE_CALL(cudaMemcpyAsync(build_state.cluster_count, &n_faces, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
+    fb.clear();
 
-    CUDA_SAFE_CALL(cudaEventRecord(events.scene_bounds_start, stream));
+    prof.record_start(Stage::Total);
+    prof.record_start(Stage::TotalBuild);
+
+    prof.record_start(Stage::SceneAABB);
     cuda::nexus_bvh::compute_scene_bounds_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(
         build_state,
         scene.d_faces,
         scene.d_vertices);
-    CUDA_SAFE_CALL(cudaEventRecord(events.scene_bounds_stop, stream));
+    prof.record_stop(Stage::SceneAABB);
 
-    CUDA_SAFE_CALL(cudaEventRecord(events.morton_start, stream));
+    prof.record_start(Stage::MortonCodes);
     cuda::nexus_bvh::compute_morton_codes_kernel<<<compute_grid(n_faces), DEFAULT_GROUP_SIZE, 0, stream>>>(build_state, workspace.d_morton_codes);
-    CUDA_SAFE_CALL(cudaEventRecord(events.morton_stop, stream));
+    prof.record_stop(Stage::MortonCodes);
 
-    CUDA_SAFE_CALL(cudaEventRecord(events.sort_start, stream));
-    cuda::sort_pairs(
-        stream,
+    prof.record_start(Stage::Sort);
+    cub::DeviceRadixSort::SortPairs(
+        workspace.d_sort_temp_storage,
+        workspace.sort_temp_storage_bytes,
         workspace.d_morton_codes,
         workspace.d_morton_codes_sorted,
         workspace.d_cluster_indices,
         workspace.d_cluster_indices_sorted,
         n_faces,
         0,
-        30);
-    CUDA_SAFE_CALL(cudaEventRecord(events.sort_stop, stream));
+        32,
+        stream);
+    prof.record_stop(Stage::Sort);
 
     build_state.cluster_indices = workspace.d_cluster_indices_sorted;
     constexpr unsigned int block_size = 64;
-    CUDA_SAFE_CALL(cudaEventRecord(events.build_start, stream));
+    prof.record_start(Stage::Build);
     cuda::nexus_bvh::build_bvh2_kernel<<<div_ceil(static_cast<int>(n_faces), static_cast<int>(block_size)), block_size, 0, stream>>>(
         build_state,
         workspace.d_morton_codes_sorted);
-    CUDA_SAFE_CALL(cudaEventRecord(events.build_stop, stream));
+    prof.record_stop(Stage::Build);
 
-    fb.clear();
+    prof.record_stop(Stage::TotalBuild);
 
-    CUDA_SAFE_CALL(cudaEventRecord(events.rt_start, stream));
-    cuda::hploc::rt_hploc_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
+    prof.record_start(Stage::RayTracing);
+    cuda::rt_bvh2_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene.d_vertices,
         scene.d_faces,
         d_bvh,
+        max_nodes - 1,
         fb.d_face_id,
         fb.d_ao,
-        scene.d_camera,
-        n_faces);
-    CUDA_SAFE_CALL(cudaEventRecord(events.rt_stop, stream));
-    CUDA_SAFE_CALL(cudaEventRecord(events.total_stop, stream));
+        scene.d_camera);
+    prof.record_stop(Stage::RayTracing);
+    prof.record_stop(Stage::Total);
+    prof.cuda_sync_event(Stage::Total);
 
-    CUDA_SAFE_CALL(cudaEventSynchronize(events.total_stop));
-
-    const double scene_bounds_ms = elapsed_ms(events.scene_bounds_start, events.scene_bounds_stop);
-    const double morton_ms = elapsed_ms(events.morton_start, events.morton_stop);
-    const double sort_ms = elapsed_ms(events.sort_start, events.sort_stop);
-    const double build_ms = elapsed_ms(events.build_start, events.build_stop);
-    const double build_pipeline_ms = scene_bounds_ms + morton_ms + sort_ms + build_ms;
-    const double rt_ms = elapsed_ms(events.rt_start, events.rt_stop);
-    const double total_ms = elapsed_ms(events.total_start, events.total_stop);
+    const double total_ms = prof.elapsed_ms(Stage::Total);
 
     if (collect) {
-      scene_bounds_times.push_back(scene_bounds_ms);
-      morton_times.push_back(morton_ms);
-      sort_times.push_back(sort_ms);
-      build_kernel_times.push_back(build_ms);
-      build_times.push_back(build_pipeline_ms);
-      rt_times.push_back(rt_ms);
-      total_times.push_back(total_ms);
+      prof.collect({Stage::SceneAABB, Stage::MortonCodes, Stage::Sort, Stage::Build, Stage::TotalBuild, Stage::RayTracing, Stage::Total});
     }
     return total_ms;
   });
   print_warmup_report(EXPERIMENT_NAME, build_warmup);
 
-  const double build_mtris = n_faces * 1e-3 / stats::median(build_times);
-  std::cout << EXPERIMENT_NAME " compute scene bounds times (in ms) - " << stats::median(scene_bounds_times) << std::endl;
-  std::cout << EXPERIMENT_NAME " compute morton codes times (in ms) - " << stats::median(morton_times) << std::endl;
-  std::cout << EXPERIMENT_NAME " radix sort times (in ms) - " << stats::median(sort_times) << std::endl;
-  std::cout << EXPERIMENT_NAME " build kernel times (in ms) - " << stats::median(build_kernel_times) << std::endl;
-  std::cout << EXPERIMENT_NAME " build pipeline times (in ms) - " << stats::median(build_times) << std::endl;
+  const double build_mtris = n_faces * 1e-3 / prof.median(Stage::TotalBuild);
+  std::cout << EXPERIMENT_NAME " compute scene bounds times (in ms) - " << prof.median(Stage::SceneAABB) << std::endl;
+  std::cout << EXPERIMENT_NAME " compute morton codes times (in ms) - " << prof.median(Stage::MortonCodes) << std::endl;
+  std::cout << EXPERIMENT_NAME " radix sort times (in ms) - " << prof.median(Stage::Sort) << std::endl;
+  std::cout << EXPERIMENT_NAME " build kernel times (in ms) - " << prof.median(Stage::Build) << std::endl;
+  std::cout << EXPERIMENT_NAME " build pipeline times (in ms) - " << prof.median(Stage::TotalBuild) << std::endl;
   std::cout << EXPERIMENT_NAME " build performance: " << build_mtris << " MTris/s" << std::endl;
 
   unsigned int n_nodes = INVALID_INDEX;
@@ -210,14 +123,14 @@ RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, c
   curassert(n_nodes == max_nodes, 226786314);
   report_sah_hploc(stream, d_bvh, max_nodes, n_faces);
 
-  const double mrays = width * height * AO_SAMPLES * 1e-3 / stats::median(rt_times);
-  std::cout << EXPERIMENT_NAME " ray tracing frame render times (in ms) - " << stats::median(rt_times) << std::endl;
+  const double mrays = width * height * AO_SAMPLES * 1e-3 / prof.median(Stage::RayTracing);
+  std::cout << EXPERIMENT_NAME " ray tracing frame render times (in ms) - " << prof.median(Stage::RayTracing) << std::endl;
   std::cout << EXPERIMENT_NAME " ray tracing performance: " << mrays << " MRays/s" << std::endl;
-  std::cout << EXPERIMENT_NAME " total pipeline times (in ms) - " << stats::median(total_times) << std::endl;
+  std::cout << EXPERIMENT_NAME " total pipeline times (in ms) - " << prof.median(Stage::Total) << std::endl;
 
   RayTracingResult result;
   fb.readback(result.face_ids, result.ao);
-  save_framebuffers(results_dir, "with_nexus_bvh", result.face_ids, result.ao);
+  save_framebuffers(results_dir, "with_" EXPERIMENT_NAME, result.face_ids, result.ao);
 
   cuda::nexus_bvh::free_workspace(stream, workspace);
   CUDA_SAFE_CALL(cudaFreeAsync(d_bvh, stream));

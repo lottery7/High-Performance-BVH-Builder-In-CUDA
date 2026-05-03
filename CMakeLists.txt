@@ -23,25 +23,21 @@ set(CUDA_SOURCES
         src/experiments/nexus_bvh8.cu
         src/experiments/lbvh.cu
         src/experiments/hploc_bvh2.cu
-        src/experiments/hploc_wide.cu
+        src/experiments/hploc_bvh8.cu
         src/kernels/helpers/camera_helpers.cuh
         src/kernels/helpers/geometry_helpers.cu
         src/kernels/helpers/random_helpers.cu
-        src/kernels/ray_tracing/rt_lbvh.cu
-        src/kernels/ray_tracing/rt_hploc.cu
-        src/kernels/ray_tracing/rt_hploc_wide.cu
-        src/kernels/ray_tracing/rt_hploc_bvh8.cu
+        src/kernels/ray_tracing/rt_bvh2.cu
+        src/kernels/ray_tracing/rt_bvh8.cu
         src/kernels/helpers/fill.cu
         src/kernels/helpers/fill_indices.cu
         src/kernels/lbvh/lbvh.cu
         src/kernels/hploc/hploc_bvh2.cu
         src/kernels/hploc/hploc_bvh8.cu
-        src/kernels/hploc/hploc_wide.cu
         src/kernels/nexus_bvh/nexus_bvh.cu
-        src/kernels/nexus_bvh/nexus_bvh_wide.cu
+        src/kernels/nexus_bvh/nexus_bvh8.cu
         src/kernels/helpers/compute_morton_codes.cu
         src/kernels/helpers/compute_scene_aabb.cu
-        src/kernels/helpers/sort_pairs.cu
 )
 
 set(LIBRARIES
@@ -66,7 +62,7 @@ add_library(${PROJECT_NAME}_core STATIC
 )
 
 # Архитектура GPU (compute capability). Можно списком: 75;86;89 и т.д.
-set_property(TARGET ${PROJECT_NAME}_core PROPERTY CUDA_ARCHITECTURES 75)
+set_property(TARGET ${PROJECT_NAME}_core PROPERTY CUDA_ARCHITECTURES 86)
 
 # CUDA-only опции компилятора
 target_compile_options(${PROJECT_NAME}_core PRIVATE

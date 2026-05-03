@@ -107,8 +107,12 @@ size_t count_diffs(const TypedImage<T>& a, const TypedImage<T>& b, T threshold)
 
 inline void save_framebuffers(const std::string& results_dir, const std::string& suffix, const image32i& face_ids, const image32f& ao)
 {
-  debug_io::dumpImage(results_dir + "/framebuffer_face_ids_" + suffix + ".bmp", debug_io::randomMapping(face_ids, NO_FACE_ID));
-  debug_io::dumpImage(results_dir + "/framebuffer_ambient_occlusion_" + suffix + ".bmp", debug_io::depthMapping(ao));
+  std::string suffix_without_spaces(suffix);
+  std::transform(suffix_without_spaces.begin(), suffix_without_spaces.end(), suffix_without_spaces.begin(), [](unsigned char c) {
+    return std::isspace(c) ? '_' : c;
+  });
+  debug_io::dumpImage(results_dir + "/face_ids_" + suffix_without_spaces + ".bmp", debug_io::randomMapping(face_ids, NO_FACE_ID));
+  debug_io::dumpImage(results_dir + "/ambient_occlusion_" + suffix_without_spaces + ".bmp", debug_io::depthMapping(ao));
 }
 
 inline void validate_against_ground_truth(
