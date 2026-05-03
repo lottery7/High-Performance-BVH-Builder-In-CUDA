@@ -9,8 +9,17 @@
 constexpr unsigned int all_threads = 0xFFFFFFFF;
 constexpr unsigned long long invalid_task = ~0ull;
 
-// Функция вычисляет масштаб для одной оси.
-// Возвращает байт экспоненты и float-множитель для квантования.
+__device__ __forceinline__ static uint8_t ceil_log2_biased(float x)
+{
+  if (x <= 0.0f) return 127;
+  const uint32_t bits = __float_as_uint(x);
+  const uint32_t exp = (bits >> 23) & 0xffu;
+  const bool is_pow2 = (bits & 0x7fffffu) == 0;
+  return static_cast<uint8_t>(exp + !is_pow2);
+}
+
+__device__ __forceinline__ static float scale_from_biased_exp(uint8_t e) { return __uint_as_float(static_cast<uint32_t>(e) << 23); }
+
 __device__ __forceinline__ static void compute_quantization(float min_p, float max_p, uint8_t& exp_out, float& scale_out)
 {
   float extent = max_p - min_p;
@@ -21,12 +30,10 @@ __device__ __forceinline__ static void compute_quantization(float min_p, float m
   }
 
   float x = extent / 255.0f;
-  int exp = static_cast<int>(ceilf(log2f(x)));
-  exp_out = static_cast<uint8_t>(exp + 127);
-  scale_out = exp2f(static_cast<float>(exp));
+  exp_out = ceil_log2_biased(x);
+  scale_out = scale_from_biased_exp(exp_out);
 }
 
-// Функции сжатия. Округляем ВНИЗ для минимума и ВВЕРХ для максимума (чтобы бокс не стал меньше)
 __device__ __forceinline__ static uint8_t quantize_lo(float p, float p_base, float scale)
 {
   float val = floorf((p - p_base) / scale);
@@ -61,7 +68,7 @@ __device__ __forceinline__ static int find_largest_internal_frontier_node(
   for (unsigned int i = 0; i < frontier_size; ++i) {
     const BVH2Node& candidate = load_bvh2_node(bvh2_nodes, frontier[i]);
     if (candidate.is_leaf()) continue;
-    const float area = candidate.aabb.surface_area();
+    const float area = candidate.aabb.half_area();
     if (area > best_area) {
       best_area = area;
       best_index = static_cast<int>(i);
@@ -121,29 +128,23 @@ namespace cuda::hploc
         frontier[frontier_size++] = expanded.right_child_index;
       }
 
-      // 1. Инициализируем базовую точку родителя (p)
+      // Сложная инициализация compressed ноды
       BVH8Node bvh8_node{};
       bvh8_node.p_x = binary_node.aabb.min_x;
       bvh8_node.p_y = binary_node.aabb.min_y;
       bvh8_node.p_z = binary_node.aabb.min_z;
 
-      // 2. Считаем масштаб и экспоненты
       float scale_x, scale_y, scale_z;
       compute_quantization(binary_node.aabb.min_x, binary_node.aabb.max_x, bvh8_node.e_x, scale_x);
       compute_quantization(binary_node.aabb.min_y, binary_node.aabb.max_y, bvh8_node.e_y, scale_y);
       compute_quantization(binary_node.aabb.min_z, binary_node.aabb.max_z, bvh8_node.e_z, scale_z);
 
-      // 3. Считаем, сколько у нас внутренних узлов и листьев
       unsigned int n_internal = 0;
-      unsigned int n_leaves = 0;
       for (unsigned int i = 0; i < frontier_size; ++i) {
-        if (load_bvh2_node(bvh2_nodes, frontier[i]).is_leaf())
-          n_leaves++;
-        else
-          n_internal++;
+        if (!load_bvh2_node(bvh2_nodes, frontier[i]).is_leaf()) n_internal++;
       }
+      const unsigned int n_leaves = frontier_size - n_internal;
 
-      // 4. Выделяем память (базовые индексы) один раз на всю ноду
       bvh8_node.child_base_idx = atomicAdd(n_bvh8_nodes, n_internal);
       bvh8_node.prim_base_idx = (n_leaves > 0) ? atomicAdd(n_bvh8_leaves, n_leaves) : 0;
       bvh8_node.imask = 0;
@@ -152,27 +153,25 @@ namespace cuda::hploc
       unsigned int next_internal_offset = 0;
       unsigned int next_leaf_offset = 0;
 
-      // 5. Заполняем слоты (прямая укладка, без хитрой сортировки)
       for (unsigned int i = 0; i < 8; ++i) {
-        bvh8_node.meta[i] = 0;  // Инициализируем нулем
+        bvh8_node.meta[i] = 0;
 
-        if (i >= frontier_size) continue;  // Пустой слот
+        if (i >= frontier_size) continue;
 
         const BVH2Node& child = load_bvh2_node(bvh2_nodes, frontier[i]);
 
         // Квантуем AABB ребенка
         bvh8_node.q_lo_x[i] = quantize_lo(child.aabb.min_x, bvh8_node.p_x, scale_x);
-        bvh8_node.q_hi_x[i] = quantize_hi(child.aabb.max_x, bvh8_node.p_x, scale_x);
         bvh8_node.q_lo_y[i] = quantize_lo(child.aabb.min_y, bvh8_node.p_y, scale_y);
-        bvh8_node.q_hi_y[i] = quantize_hi(child.aabb.max_y, bvh8_node.p_y, scale_y);
         bvh8_node.q_lo_z[i] = quantize_lo(child.aabb.min_z, bvh8_node.p_z, scale_z);
+        bvh8_node.q_hi_x[i] = quantize_hi(child.aabb.max_x, bvh8_node.p_x, scale_x);
+        bvh8_node.q_hi_y[i] = quantize_hi(child.aabb.max_y, bvh8_node.p_y, scale_y);
         bvh8_node.q_hi_z[i] = quantize_hi(child.aabb.max_z, bvh8_node.p_z, scale_z);
 
         unsigned long long new_task = invalid_task;
 
         if (child.is_leaf()) {
-          uint8_t count = 0b001;
-          bvh8_node.meta[i] = (count << 5) | (next_leaf_offset & 0x1F);
+          bvh8_node.meta[i] = (0b001 << 5) | (next_leaf_offset & 0x1F);
           bvh8_prim_indices[bvh8_node.prim_base_idx + next_leaf_offset] = child.right_child_index;
           next_leaf_offset++;
           new_task = pack_task(frontier[i], INVALID_INDEX);
@@ -184,14 +183,13 @@ namespace cuda::hploc
           new_task = pack_task(frontier[i], child_idx);
         }
 
-        // Раздаем ТАСКИ
+        // Раздаем таски
         if (i == 0)
           task = new_task;
         else
           tasks[new_tasks_start + i - 1] = new_task;
       }
 
-      // 6. Сохраняем готовую 80-байтную ноду в память
       bvh8_nodes[bvh8_node_index] = bvh8_node;
     }
   }

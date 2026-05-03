@@ -26,6 +26,7 @@ RayTracingResult run_hploc_bvh8(cudaStream_t stream, const cuda::Scene& scene, c
   const unsigned int height = fb.height;
   const unsigned int n_faces = scene.n_faces;
   const unsigned int n_nodes_capacity = 2 * n_faces - 1;
+  const unsigned int max_wide_nodes = static_cast<unsigned int>(div_ceil(static_cast<int>(4u * n_faces - 1u), 7));
 
   DeviceBuffer<BVH2Node> bvh2_nodes(n_nodes_capacity, stream);
   DeviceBuffer<AABB> scene_aabb(1, stream);
@@ -51,7 +52,8 @@ RayTracingResult run_hploc_bvh8(cudaStream_t stream, const cuda::Scene& scene, c
           stream));
   DeviceBuffer<uint8_t> temp_storage(temp_storage_bytes, stream);
 
-  DeviceBuffer<BVH8Node> bvh8_nodes(n_nodes_capacity, stream);
+  // TODO tighter BVH8 node capacity - помогло
+  DeviceBuffer<BVH8Node> bvh8_nodes(max_wide_nodes, stream);
   DeviceBuffer<unsigned long long> tasks(n_faces, stream);
   DeviceBuffer<unsigned int> n_tasks(1, stream);
   DeviceBuffer<unsigned int> n_bvh8_nodes(1, stream);
@@ -195,7 +197,7 @@ RayTracingResult run_hploc_bvh8(cudaStream_t stream, const cuda::Scene& scene, c
   unsigned int n_wide_nodes = INVALID_INDEX;
   CUDA_SAFE_CALL(cudaMemcpyAsync(&n_wide_nodes, n_bvh8_nodes, sizeof(unsigned int), cudaMemcpyDeviceToHost, stream));
   CUDA_SYNC_STREAM(stream);
-  curassert(0 < n_wide_nodes && n_wide_nodes <= n_nodes_capacity, 226786315);
+  curassert(0 < n_wide_nodes && n_wide_nodes <= max_wide_nodes, 226786315);
   wide_bvh_sah::report_nexus_bvh8_sah(stream, reinterpret_cast<cuda::nexus_bvh_wide::BVH8Node*>(bvh8_nodes.get()), n_wide_nodes);
 
   RayTracingResult res;
