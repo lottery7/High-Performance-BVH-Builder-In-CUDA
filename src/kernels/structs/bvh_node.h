@@ -3,7 +3,7 @@
 #include "aabb.h"
 #include "utils/defines.h"
 
-struct BVH2Node {
+struct __align__(16) BVH2Node {
   AABB aabb;
   unsigned int left_child_index;
   unsigned int right_child_index;

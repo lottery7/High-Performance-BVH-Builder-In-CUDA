@@ -272,7 +272,7 @@ RayTracingResult run_nexus_bvh8(cudaStream_t stream, const cuda::Scene& scene, c
 
   RayTracingResult result;
   fb.readback(result.face_ids, result.ao);
-  save_framebuffers(results_dir, "with_nexus_bvh_wide", result.face_ids, result.ao);
+  save_framebuffers(results_dir, "with_" EXPERIMENT_NAME, result.face_ids, result.ao);
 
   CUDA_SAFE_CALL(cudaFreeAsync(d_index_pairs, stream));
   CUDA_SAFE_CALL(cudaFreeAsync(d_work_alloc_counter, stream));

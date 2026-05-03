@@ -290,6 +290,7 @@ namespace cuda::hploc
       unsigned int size = right - left + 1;
       bool is_final = is_active && size == n_faces;
       unsigned int warp_mask = __ballot_sync(ALL_THREADS, is_active && (size > MERGING_THRESHOLD) || is_final);
+      const bool has_merge_work = warp_mask != 0;
 
       while (warp_mask) {
         unsigned int target_lane_id = __ffs(warp_mask) - 1;
@@ -297,6 +298,9 @@ namespace cuda::hploc
         ploc_merge(target_lane_id, left, right, split, is_final, nodes, cluster_ids, n_clusters);
         warp_mask &= (warp_mask - 1);
       }
+
+      // TODO Перенос __threadfence из ploc_merge дал небольшой прирост по производительности
+      if (has_merge_work) __threadfence();
     }
   }
 

@@ -172,7 +172,7 @@ RayTracingResult run_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cud
 
   RayTracingResult res;
   fb.readback(res.face_ids, res.ao);
-  save_framebuffers(results_dir, "with_lbvh", res.face_ids, res.ao);
+  save_framebuffers(results_dir, "with_" EXPERIMENT_NAME, res.face_ids, res.ao);
 
   CUDA_SYNC_STREAM(stream);
 

@@ -243,7 +243,6 @@ namespace cuda
 
       int hits = 0;
 
-#pragma unroll
       for (int s = 0; s < AO_SAMPLES; ++s) {
         float u1 = random01(rng);
         float u2 = random01(rng);

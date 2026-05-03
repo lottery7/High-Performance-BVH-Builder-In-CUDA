@@ -62,7 +62,7 @@ add_library(${PROJECT_NAME}_core STATIC
 )
 
 # Архитектура GPU (compute capability). Можно списком: 75;86;89 и т.д.
-set_property(TARGET ${PROJECT_NAME}_core PROPERTY CUDA_ARCHITECTURES 75)
+set_property(TARGET ${PROJECT_NAME}_core PROPERTY CUDA_ARCHITECTURES 86)
 
 # CUDA-only опции компилятора
 target_compile_options(${PROJECT_NAME}_core PRIVATE

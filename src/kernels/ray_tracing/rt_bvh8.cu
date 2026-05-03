@@ -9,20 +9,32 @@
 #include "../structs/bvh_node.h"
 #include "../structs/camera.h"
 
-constexpr unsigned int bvh_stack_size = 64;
+constexpr unsigned int bvh_stack_size = 32;
 
 // Эффективная загрузка 80-байтной ноды через 5 128-битных инструкций
-__device__ __forceinline__ static BVH8Node load_bvh8_node(const BVH8Node* __restrict__ nodes, unsigned int index)
+struct BVH8NodePacked {
+  uint4 v0;
+  uint4 v1;
+  uint4 v2;
+  uint4 v3;
+  uint4 v4;
+};
+
+__device__ __forceinline__ static BVH8NodePacked load_bvh8_node(const BVH8Node* __restrict__ nodes, unsigned int index)
 {
   const uint4* ptr = reinterpret_cast<const uint4*>(&nodes[index]);
-  BVH8Node node;
-  uint4* node_ptr = reinterpret_cast<uint4*>(&node);
-  node_ptr[0] = __ldg(&ptr[0]);
-  node_ptr[1] = __ldg(&ptr[1]);
-  node_ptr[2] = __ldg(&ptr[2]);
-  node_ptr[3] = __ldg(&ptr[3]);
-  node_ptr[4] = __ldg(&ptr[4]);
+  BVH8NodePacked node;
+  node.v0 = __ldg(&ptr[0]);
+  node.v1 = __ldg(&ptr[1]);
+  node.v2 = __ldg(&ptr[2]);
+  node.v3 = __ldg(&ptr[3]);
+  node.v4 = __ldg(&ptr[4]);
   return node;
+}
+
+__device__ __forceinline__ static std::uint32_t get_byte(std::uint32_t lo, std::uint32_t hi, std::uint32_t index)
+{
+  return __byte_perm(lo, hi, index) & 0xffu;
 }
 
 // Извлечение масштаба сетки: scale = 2^(e - 127). В IEEE754 это эквивалентно сдвигу e << 23
@@ -61,56 +73,65 @@ __device__ __forceinline__ static bool closest_hit(
 
   unsigned int stack[bvh_stack_size];
   unsigned int sp = 0;
-
-  // Корень дерева всегда кладем в стек
-  stack[sp++] = root_index;
+  unsigned int node_index = root_index;
 
   // Определяем октант луча для аппаратного front-to-back обхода
   std::uint32_t octant = (dir.x < 0.0f ? 4 : 0) | (dir.y < 0.0f ? 2 : 0) | (dir.z < 0.0f ? 1 : 0);
 
-  while (sp > 0) {
-    const unsigned int node_index = stack[--sp];
-    const BVH8Node node = load_bvh8_node(nodes, node_index);
+  while (true) {
+    const BVH8NodePacked node = load_bvh8_node(nodes, node_index);
+    const std::uint32_t e_imask = node.v0.w;
+    const std::uint32_t imask = e_imask >> 24u;
+    unsigned int next_node_index = 0;
+    bool has_next_node = false;
 
     // Подготовка "луча" в локальных координатах узла
-    float3 o_adj = make_float3((node.p_x - orig.x) * inv_dir.x, (node.p_y - orig.y) * inv_dir.y, (node.p_z - orig.z) * inv_dir.z);
+    float3 o_adj = make_float3(
+        (__uint_as_float(node.v0.x) - orig.x) * inv_dir.x,
+        (__uint_as_float(node.v0.y) - orig.y) * inv_dir.y,
+        (__uint_as_float(node.v0.z) - orig.z) * inv_dir.z);
 
-    float3 d_adj = make_float3(get_grid_scale(node.e_x) * inv_dir.x, get_grid_scale(node.e_y) * inv_dir.y, get_grid_scale(node.e_z) * inv_dir.z);
+    float3 d_adj = make_float3(
+        get_grid_scale(e_imask & 0xffu) * inv_dir.x,
+        get_grid_scale((e_imask >> 8u) & 0xffu) * inv_dir.y,
+        get_grid_scale((e_imask >> 16u) & 0xffu) * inv_dir.z);
 
 // Идем в обратном порядке (back-to-front).
 // Таким образом дальние узлы кладутся в стек первыми, а ближние - последними.
 // При извлечении из стека (pop) мы получим строгий front-to-back обход!
-#pragma unroll
     for (int order = 7; order >= 0; --order) {
       std::uint32_t i = order ^ (7 - octant);  // Магия из статьи Ylitie et al.
 
-      if (node.meta[i] == 0) continue;  // Слот пустой
+      const std::uint32_t meta = get_byte(node.v1.z, node.v1.w, i);
+      if (meta == 0) continue;  // Слот пустой
 
       // Сверхбыстрое пересечение луча со сжатым AABB (1 FMA на плоскость)
-      float t0x = o_adj.x + node.q_lo_x[i] * d_adj.x;
-      float t1x = o_adj.x + node.q_hi_x[i] * d_adj.x;
+      float t0x = o_adj.x + get_byte(node.v2.x, node.v2.y, i) * d_adj.x;
+      float t1x = o_adj.x + get_byte(node.v3.z, node.v3.w, i) * d_adj.x;
       float tminx = fminf(t0x, t1x);
       float tmaxx = fmaxf(t0x, t1x);
 
-      float t0y = o_adj.y + node.q_lo_y[i] * d_adj.y;
-      float t1y = o_adj.y + node.q_hi_y[i] * d_adj.y;
+      float t0y = o_adj.y + get_byte(node.v2.z, node.v2.w, i) * d_adj.y;
+      float t1y = o_adj.y + get_byte(node.v4.x, node.v4.y, i) * d_adj.y;
       float tminy = fmaxf(tminx, fminf(t0y, t1y));
       float tmaxy = fminf(tmaxx, fmaxf(t0y, t1y));
 
-      float t0z = o_adj.z + node.q_lo_z[i] * d_adj.z;
-      float t1z = o_adj.z + node.q_hi_z[i] * d_adj.z;
+      float t0z = o_adj.z + get_byte(node.v3.x, node.v3.y, i) * d_adj.z;
+      float t1z = o_adj.z + get_byte(node.v4.z, node.v4.w, i) * d_adj.z;
       float tmin = fmaxf(tminy, fminf(t0z, t1z));
       float tmax = fminf(tmaxy, fmaxf(t0z, t1z));
 
       // Если есть пересечение
-      if (tmax >= fmaxf(tmin, t_min) && tmin <= best_t) {
-        if ((node.imask & (1u << i)) != 0u) {
-          // Это внутренняя нода -> кладем в стек
-          stack[sp++] = node.child_base_idx + count_bits_below(node.imask, i);
+      if (tmax >= tmin && tmax >= t_min && tmin <= best_t) {
+        if ((imask & (1u << i)) != 0u) {
+          const unsigned int child_index = node.v1.x + count_bits_below(imask, i);
+          if (has_next_node) stack[sp++] = next_node_index;
+          next_node_index = child_index;
+          has_next_node = true;
         } else {
           // Это лист -> проверяем треугольник прямо сейчас
-          unsigned int leaf_offset = node.meta[i] & 0x1F;
-          unsigned int face_id = prim_indices[node.prim_base_idx + leaf_offset];
+          unsigned int leaf_offset = meta & 0x1F;
+          unsigned int face_id = prim_indices[node.v1.y + leaf_offset];
 
           const uint3 face = load_face(faces, face_id);
           const float3 v0 = load_vertex(vertices, face.x);
@@ -130,6 +151,13 @@ __device__ __forceinline__ static bool closest_hit(
           }
         }
       }
+    }
+
+    if (has_next_node) {
+      node_index = next_node_index;
+    } else {
+      if (sp == 0) break;
+      node_index = stack[--sp];
     }
   }
 
@@ -154,42 +182,54 @@ __device__ static bool any_hit_from(
 
   unsigned int stack[bvh_stack_size];
   unsigned int sp = 0;
-  stack[sp++] = root_index;
+  unsigned int node_index = root_index;
 
-  while (sp > 0) {
-    const unsigned int node_index = stack[--sp];
-    const BVH8Node node = load_bvh8_node(nodes, node_index);
+  while (true) {
+    const BVH8NodePacked node = load_bvh8_node(nodes, node_index);
+    const std::uint32_t e_imask = node.v0.w;
+    const std::uint32_t imask = e_imask >> 24u;
+    unsigned int next_node_index = 0;
+    bool has_next_node = false;
 
-    float3 o_adj = make_float3((node.p_x - orig.x) * inv_dir.x, (node.p_y - orig.y) * inv_dir.y, (node.p_z - orig.z) * inv_dir.z);
+    float3 o_adj = make_float3(
+        (__uint_as_float(node.v0.x) - orig.x) * inv_dir.x,
+        (__uint_as_float(node.v0.y) - orig.y) * inv_dir.y,
+        (__uint_as_float(node.v0.z) - orig.z) * inv_dir.z);
 
-    float3 d_adj = make_float3(get_grid_scale(node.e_x) * inv_dir.x, get_grid_scale(node.e_y) * inv_dir.y, get_grid_scale(node.e_z) * inv_dir.z);
+    float3 d_adj = make_float3(
+        get_grid_scale(e_imask & 0xffu) * inv_dir.x,
+        get_grid_scale((e_imask >> 8u) & 0xffu) * inv_dir.y,
+        get_grid_scale((e_imask >> 16u) & 0xffu) * inv_dir.z);
 
 // Для AO порядок обхода неважен, просто идем линейно 0..7
-#pragma unroll
     for (std::uint32_t i = 0; i < 8; ++i) {
-      if (node.meta[i] == 0) continue;
+      const std::uint32_t meta = get_byte(node.v1.z, node.v1.w, i);
+      if (meta == 0) continue;
 
-      float t0x = o_adj.x + node.q_lo_x[i] * d_adj.x;
-      float t1x = o_adj.x + node.q_hi_x[i] * d_adj.x;
+      float t0x = o_adj.x + get_byte(node.v2.x, node.v2.y, i) * d_adj.x;
+      float t1x = o_adj.x + get_byte(node.v3.z, node.v3.w, i) * d_adj.x;
       float tminx = fminf(t0x, t1x);
       float tmaxx = fmaxf(t0x, t1x);
 
-      float t0y = o_adj.y + node.q_lo_y[i] * d_adj.y;
-      float t1y = o_adj.y + node.q_hi_y[i] * d_adj.y;
+      float t0y = o_adj.y + get_byte(node.v2.z, node.v2.w, i) * d_adj.y;
+      float t1y = o_adj.y + get_byte(node.v4.x, node.v4.y, i) * d_adj.y;
       float tminy = fmaxf(tminx, fminf(t0y, t1y));
       float tmaxy = fminf(tmaxx, fmaxf(t0y, t1y));
 
-      float t0z = o_adj.z + node.q_lo_z[i] * d_adj.z;
-      float t1z = o_adj.z + node.q_hi_z[i] * d_adj.z;
+      float t0z = o_adj.z + get_byte(node.v3.x, node.v3.y, i) * d_adj.z;
+      float t1z = o_adj.z + get_byte(node.v4.z, node.v4.w, i) * d_adj.z;
       float tmin = fmaxf(tminy, fminf(t0z, t1z));
       float tmax = fminf(tmaxy, fmaxf(t0z, t1z));
 
-      if (tmax >= fmaxf(tmin, t_min) && tmin <= t_max) {
-        if ((node.imask & (1u << i)) != 0u) {
-          stack[sp++] = node.child_base_idx + count_bits_below(node.imask, i);
+      if (tmax >= tmin && tmax >= t_min) {
+        if ((imask & (1u << i)) != 0u) {
+          const unsigned int child_index = node.v1.x + count_bits_below(imask, i);
+          if (has_next_node) stack[sp++] = next_node_index;
+          next_node_index = child_index;
+          has_next_node = true;
         } else {
-          unsigned int leaf_offset = node.meta[i] & 0x1F;
-          unsigned int face_id = prim_indices[node.prim_base_idx + leaf_offset];
+          unsigned int leaf_offset = meta & 0x1F;
+          unsigned int face_id = prim_indices[node.v1.y + leaf_offset];
 
           if (static_cast<int>(face_id) == ignore_face) continue;
 
@@ -205,6 +245,13 @@ __device__ static bool any_hit_from(
         }
       }
     }
+
+    if (has_next_node) {
+      node_index = next_node_index;
+    } else {
+      if (sp == 0) break;
+      node_index = stack[--sp];
+    }
   }
 
   return false;
@@ -214,7 +261,7 @@ __device__ static bool any_hit_from(
 
 namespace cuda
 {
-  __global__ void rt_bvh8_kernel(
+  __global__ __launch_bounds__(DEFAULT_GROUP_SIZE_X * DEFAULT_GROUP_SIZE_Y, 4) void rt_bvh8_kernel(
       const float* vertices,
       const unsigned int* faces,
       const BVH8Node* bvh_nodes,
@@ -277,7 +324,6 @@ namespace cuda
 
       int hits = 0;
 
-#pragma unroll
       for (int s = 0; s < AO_SAMPLES; ++s) {
         float u1 = random01(rng);
         float u2 = random01(rng);
