@@ -239,7 +239,7 @@ namespace
     rassert(!scene.faces.empty(), 54362452342);
 
     const std::string scene_name = std::filesystem::path(scene_path).parent_path().filename().string();
-    const std::string camera_path = "data/" + scene_name + "/camera.txt";
+    const std::string camera_path = std::filesystem::path(scene_path).parent_path().string() + "/camera.txt";
     const std::string results_dir = "results/" + scene_name;
 
     std::filesystem::create_directory("results");

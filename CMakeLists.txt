@@ -35,7 +35,7 @@ set(CUDA_SOURCES
         src/kernels/hploc/hploc_bvh2.cu
         src/kernels/hploc/hploc_bvh8.cu
         src/kernels/nexus_bvh/nexus_bvh.cu
-        src/kernels/nexus_bvh/nexus_bvh_wide.cu
+        src/kernels/nexus_bvh/nexus_bvh8.cu
         src/kernels/helpers/compute_morton_codes.cu
         src/kernels/helpers/compute_scene_aabb.cu
 )

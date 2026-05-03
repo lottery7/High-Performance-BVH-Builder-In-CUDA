@@ -12,6 +12,5 @@ namespace cuda
       unsigned int root_index,
       int* face_id,
       float* ambient_occlusion,
-      const CameraView* camera,
-      unsigned int n_faces);
+      const CameraView* camera);
 }  // namespace cuda

@@ -171,8 +171,7 @@ RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, c
         max_nodes - 1,
         fb.d_face_id,
         fb.d_ao,
-        scene.d_camera,
-        n_faces);
+        scene.d_camera);
     CUDA_SAFE_CALL(cudaEventRecord(events.rt_stop, stream));
     CUDA_SAFE_CALL(cudaEventRecord(events.total_stop, stream));
 

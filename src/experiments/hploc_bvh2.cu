@@ -113,8 +113,7 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
         n_nodes_capacity - 1,
         fb.d_face_id,
         fb.d_ao,
-        scene.d_camera,
-        n_faces);
+        scene.d_camera);
     prof.record_stop(Stage::RayTracing);
 
     prof.record_stop(Stage::Total);

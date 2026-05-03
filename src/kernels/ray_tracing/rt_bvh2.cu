@@ -60,7 +60,6 @@ __device__ __forceinline__ static bool closest_hit(
     const float3& dir,
     const float3& inv_dir,
     const BVH2Node* __restrict__ nodes,
-    unsigned int n_faces,
     const float* __restrict__ vertices,
     const unsigned int* __restrict__ faces,
     float t_min,
@@ -136,7 +135,6 @@ __device__ static bool any_hit_from(
     const float* __restrict__ vertices,
     const unsigned int* __restrict__ faces,
     const BVH2Node* __restrict__ nodes,
-    unsigned int n_faces,
     int ignore_face)
 {
   const float t_min = 1e-4f;
@@ -192,8 +190,7 @@ namespace cuda
       const unsigned int root_index,
       int* face_id,
       float* ambient_occlusion,
-      const CameraView* camera,
-      unsigned int n_faces)
+      const CameraView* camera)
   {
     const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
     const unsigned int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -215,7 +212,6 @@ namespace cuda
         ray_direction,
         inv_ray_direction,
         bvh_nodes,
-        n_faces,
         vertices,
         faces,
         1e-6f,
@@ -261,7 +257,7 @@ namespace cuda
             tangent.z * d_local.x + bitangent.z * d_local.y + n.z * d_local.z);
         float3 inv_d = inverse_float3(d);
 
-        if (any_hit_from(root_index, offset_origin, d, inv_d, vertices, faces, bvh_nodes, n_faces, face_id_best)) ++hits;
+        if (any_hit_from(root_index, offset_origin, d, inv_d, vertices, faces, bvh_nodes, face_id_best)) ++hits;
       }
 
       ao = 1.0f - static_cast<float>(hits) / static_cast<float>(AO_SAMPLES);

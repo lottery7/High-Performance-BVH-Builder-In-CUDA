@@ -119,8 +119,7 @@ RayTracingResult run_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cud
         0,
         fb.d_face_id,
         fb.d_ao,
-        scene_gpu.d_camera,
-        scene_gpu.n_faces);
+        scene_gpu.d_camera);
     prof.record_stop(Stage::RayTracing);
 
     prof.record_stop(Stage::Total);

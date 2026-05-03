@@ -9,7 +9,7 @@
 #include "../structs/bvh_node.h"
 #include "../structs/camera.h"
 
-constexpr unsigned int bvh_stack_size = 256;
+constexpr unsigned int bvh_stack_size = 64;
 
 // Эффективная загрузка 80-байтной ноды через 5 128-битных инструкций
 __device__ __forceinline__ static BVH8Node load_bvh8_node(const BVH8Node* __restrict__ nodes, unsigned int index)
