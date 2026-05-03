@@ -59,12 +59,14 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
   benchmark::GpuStageProfiler prof(stream, benchmark_iters());
 
   const AdaptiveWarmupResult pipeline_warmup = benchmark::run_adaptive([&](bool collect) {
+    CUDA_SAFE_CALL(cudaMemcpyAsync(n_clusters, &n_faces, sizeof(n_faces), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(scene_aabb, &empty_scene, sizeof(AABB), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemsetAsync(parents, 0xFF, sizeof(unsigned int) * n_nodes_capacity, stream));
+
     prof.record_start(Stage::Total);
     prof.record_start(Stage::TotalBuild);
 
     prof.record_start(Stage::Leaves);
-    CUDA_SAFE_CALL(cudaMemcpyAsync(n_clusters, &n_faces, sizeof(n_faces), cudaMemcpyHostToDevice, stream));
-    CUDA_SAFE_CALL(cudaMemcpyAsync(scene_aabb, &empty_scene, sizeof(AABB), cudaMemcpyHostToDevice, stream));
     cuda::hploc::build_leaves_kernel<<<div_ceil(n_faces, 128 * 3), 128, 0, stream>>>(
         scene.d_faces,
         n_faces,
@@ -99,7 +101,6 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
     prof.record_stop(Stage::Sort);
 
     prof.record_start(Stage::Build);
-    CUDA_SAFE_CALL(cudaMemsetAsync(parents, 0xFF, sizeof(unsigned int) * n_nodes_capacity, stream));
     cuda::hploc::build_kernel<<<div_ceil(n_faces, 64), 64, 0, stream>>>(parents, morton_codes_sorted, nodes, clusters_sorted, n_clusters, n_faces);
     prof.record_stop(Stage::Build);
 

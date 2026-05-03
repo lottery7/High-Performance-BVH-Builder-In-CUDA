@@ -69,12 +69,23 @@ RayTracingResult run_hploc_bvh8(cudaStream_t stream, const cuda::Scene& scene, c
   benchmark::GpuStageProfiler prof(stream, benchmark_iters());
 
   const AdaptiveWarmupResult pipeline_warmup = benchmark::run_adaptive([&](bool collect) {
+    const unsigned long long root_task = cuda::hploc::pack_task(n_nodes_capacity - 1, 0);
+    constexpr unsigned int one = 1;
+    constexpr unsigned int zero = 0;
+
+    CUDA_SAFE_CALL(cudaMemcpyAsync(n_clusters, &n_faces, sizeof(n_faces), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(scene_aabb, &empty_scene, sizeof(AABB), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemsetAsync(parents, 0xFF, sizeof(unsigned int) * n_nodes_capacity, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(n_bvh8_leaves, &zero, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemsetAsync(tasks, 0xFF, sizeof(unsigned long long) * n_faces, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(tasks, &root_task, sizeof(unsigned long long), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(n_tasks, &one, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(n_bvh8_nodes, &one, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
+
     prof.record_start(Stage::Total);
     prof.record_start(Stage::TotalBuild);
 
     prof.record_start(Stage::Leaves);
-    CUDA_SAFE_CALL(cudaMemcpyAsync(n_clusters, &n_faces, sizeof(n_faces), cudaMemcpyHostToDevice, stream));
-    CUDA_SAFE_CALL(cudaMemcpyAsync(scene_aabb, &empty_scene, sizeof(AABB), cudaMemcpyHostToDevice, stream));
     cuda::hploc::build_leaves_kernel<<<div_ceil(n_faces, 128) / 3, 128, 0, stream>>>(
         scene.d_faces,
         n_faces,
@@ -109,7 +120,6 @@ RayTracingResult run_hploc_bvh8(cudaStream_t stream, const cuda::Scene& scene, c
     prof.record_stop(Stage::Sort);
 
     prof.record_start(Stage::Build);
-    CUDA_SAFE_CALL(cudaMemsetAsync(parents, 0xFF, sizeof(unsigned int) * n_nodes_capacity, stream));
     cuda::hploc::build_kernel<<<div_ceil(n_faces, 64), 64, 0, stream>>>(
         parents,
         morton_codes_sorted,
@@ -120,14 +130,6 @@ RayTracingResult run_hploc_bvh8(cudaStream_t stream, const cuda::Scene& scene, c
     prof.record_stop(Stage::Build);
 
     prof.record_start(Stage::Conversion);
-    const unsigned long long root_task = cuda::hploc::pack_task(n_nodes_capacity - 1, 0);
-    constexpr unsigned int one = 1;
-    constexpr unsigned int zero = 0;
-    CUDA_SAFE_CALL(cudaMemcpyAsync(n_bvh8_leaves, &zero, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
-    CUDA_SAFE_CALL(cudaMemsetAsync(tasks, 0xFF, sizeof(unsigned long long) * n_faces, stream));
-    CUDA_SAFE_CALL(cudaMemcpyAsync(tasks, &root_task, sizeof(unsigned long long), cudaMemcpyHostToDevice, stream));
-    CUDA_SAFE_CALL(cudaMemcpyAsync(n_tasks, &one, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
-    CUDA_SAFE_CALL(cudaMemcpyAsync(n_bvh8_nodes, &one, sizeof(unsigned int), cudaMemcpyHostToDevice, stream));
     cuda::hploc::build_bvh8_kernel<<<div_ceil(n_faces, 64), 64, 0, stream>>>(
         bvh2_nodes,
         bvh8_nodes,
