@@ -196,7 +196,6 @@ __device__ __forceinline__ static void ploc_merge(
   }
 
   if (lane_id < n_left_clusters + n_right_clusters) cluster_ids[l_start + lane_id] = cluster_id;
-  __threadfence();
 }
 
 __device__ __forceinline__ static void atomic_min_float(float* ptr, float value)
