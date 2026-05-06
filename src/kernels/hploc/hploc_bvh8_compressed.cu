@@ -4,7 +4,7 @@
 #include "../../utils/utils.h"
 #include "../helpers/helpers.cuh"
 #include "../structs/aabb.h"
-#include "hploc_bvh8.cuh"
+#include "hploc_bvh8_compressed.cuh"
 
 constexpr unsigned int all_threads = 0xFFFFFFFF;
 constexpr unsigned long long invalid_task = ~0ull;
@@ -79,7 +79,7 @@ __device__ __forceinline__ static int find_largest_internal_frontier_node(
 
 namespace cuda::hploc
 {
-  __global__ void build_bvh8_kernel(
+  __global__ void build_bvh8_compressed_kernel(
       const BVH2Node* __restrict__ bvh2_nodes,
       BVH8Node* __restrict__ bvh8_nodes,
       unsigned int* __restrict__ bvh8_prim_indices,

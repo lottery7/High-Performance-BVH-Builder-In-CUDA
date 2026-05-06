@@ -7,18 +7,18 @@
 #include "../utils/defines.h"
 #include "../utils/utils.h"
 #include "benchmark.h"
-#include "hploc_bvh8.h"
-#include "kernels/hploc/hploc_bvh8.cuh"
+#include "hploc_bvh8_compressed.h"
+#include "kernels/hploc/hploc_bvh8_compressed.cuh"
 #include "kernels/ray_tracing/rt_bvh8.cuh"
 #include "utils/device_buffer.h"
 #include "utils/wide_bvh_sah.h"
 
-#define EXPERIMENT_NAME "H-PLOC BVH8"
+#define EXPERIMENT_NAME "H-PLOC BVH8 Compressed"
 
 using Stage = benchmark::GpuStageProfiler::Stage;
 const AABB empty_scene = AABB::neutral();
 
-RayTracingResult run_hploc_bvh8(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
+RayTracingResult run_hploc_bvh8_compressed(cudaStream_t stream, const cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& results_dir)
 {
   std::cout << "\n=== Experiment: " EXPERIMENT_NAME << std::endl;
 
@@ -132,7 +132,7 @@ RayTracingResult run_hploc_bvh8(cudaStream_t stream, const cuda::Scene& scene, c
     prof.record_stop(Stage::Build);
 
     prof.record_start(Stage::Conversion);
-    cuda::hploc::build_bvh8_kernel<<<div_ceil(n_faces, 64), 64, 0, stream>>>(
+    cuda::hploc::build_bvh8_compressed_kernel<<<div_ceil(n_faces, 64), 64, 0, stream>>>(
         bvh2_nodes,
         bvh8_nodes,
         bvh8_prim_indices,

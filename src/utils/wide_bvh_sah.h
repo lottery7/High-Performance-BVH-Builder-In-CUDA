@@ -71,19 +71,19 @@ namespace wide_bvh_sah
 
       rassert(node_index < node_count, 872345102, node_index, node_count);
       const WideBVHNode<Arity>& node = nodes[node_index];
+
+      if (node.is_leaf()) {
+        sah += costs.intersection * node.aabb.surface_area();
+        continue;
+      }
+
       sah += costs.traversal * node.aabb.surface_area();
-
       for (unsigned int slot = 0; slot < Arity; ++slot) {
-        if ((node.valid_mask & (1u << slot)) == 0u) continue;
+        const unsigned int child_index = node.children[slot];
+        if (child_index == INVALID_INDEX) continue;
 
-        const AABB& child_aabb = node.child_aabbs[slot];
-        if ((node.primitive_mask & (1u << slot)) != 0u) {
-          sah += costs.intersection * child_aabb.surface_area();
-        } else {
-          const unsigned int child_index = node.child_indices[slot];
-          rassert(child_index < node_count, 872345103, child_index, node_count);
-          stack.push_back(child_index);
-        }
+        rassert(child_index < node_count, 872345103, child_index, node_count);
+        stack.push_back(child_index);
       }
     }
 

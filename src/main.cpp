@@ -15,7 +15,8 @@
 
 #include "experiments/common.h"
 #include "experiments/hploc_bvh2.h"
-#include "experiments/hploc_bvh8.h"
+#include "experiments/hploc_bvh8_compressed.h"
+#include "experiments/hploc_wide.h"
 #include "experiments/lbvh.h"
 #include "experiments/nexus_bvh2.h"
 #include "experiments/nexus_bvh8.h"
@@ -32,7 +33,6 @@ namespace
 
   struct ExperimentSpec {
     std::string name;
-    std::vector<std::string> aliases;
     ExperimentRunner run;
   };
 
@@ -101,27 +101,32 @@ namespace
     static const std::vector<ExperimentSpec> experiments = {
         {
             "lbvh",
-            {"lbvh"},
             [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) { return run_lbvh(s, scene, fb, dir); },
         },
         {
-            "hploc",
-            {"hploc_bvh2"},
+            "hploc_bvh2",
             [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) { return run_hploc(s, scene, fb, dir); },
         },
         {
+            "hploc_bvh8_compressed",
+            [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) {
+              return run_hploc_bvh8_compressed(s, scene, fb, dir);
+            },
+        },
+        {
+            "hploc_bvh4",
+            [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) { return run_hploc_wide4(s, scene, fb, dir); },
+        },
+        {
             "hploc_bvh8",
-            {"hploc_bvh8"},
-            [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) { return run_hploc_bvh8(s, scene, fb, dir); },
+            [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) { return run_hploc_wide8(s, scene, fb, dir); },
         },
         {
             "nexus_bvh2",
-            {"nexus_bvh2"},
             [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) { return run_nexus_bvh2(s, scene, fb, dir); },
         },
         {
             "nexus_bvh8",
-            {"nexus_bvh8"},
             [](cudaStream_t s, cuda::Scene& scene, cuda::Framebuffers& fb, const std::string& dir) { return run_nexus_bvh8(s, scene, fb, dir); },
         },
     };
@@ -134,7 +139,6 @@ namespace
       std::unordered_map<std::string, const ExperimentSpec*> m;
       for (const auto& e : experiments_registry()) {
         m[e.name] = &e;
-        for (const auto& alias : e.aliases) m[alias] = &e;
       }
       return m;
     }();

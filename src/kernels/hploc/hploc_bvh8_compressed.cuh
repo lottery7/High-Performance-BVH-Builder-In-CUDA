@@ -13,7 +13,7 @@ namespace cuda::hploc
 
   __host__ __device__ __forceinline__ unsigned int unpack_bvh8_node_index(unsigned long long task) { return task; }
 
-  __global__ void build_bvh8_kernel(
+  __global__ void build_bvh8_compressed_kernel(
       const BVH2Node* __restrict__ bvh2_nodes,
       BVH8Node* __restrict__ bvh8_nodes,
       unsigned int* __restrict__ bvh8_prim_indices,

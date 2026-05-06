@@ -1,14 +1,14 @@
 #pragma once
 
 #include "aabb.h"
+#include "utils/defines.h"
 
 template <unsigned int Arity>
 struct WideBVHNode {
   AABB aabb;
-  AABB child_aabbs[Arity];
-  unsigned int child_indices[Arity];
-  unsigned int valid_mask;
-  unsigned int primitive_mask;
+  unsigned int children[Arity];
+
+  __host__ __device__ bool is_leaf() const { return children[0] == INVALID_INDEX; }
 };
 
 using WideBVHNode4 = WideBVHNode<4>;
