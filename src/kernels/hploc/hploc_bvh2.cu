@@ -13,9 +13,6 @@
 
 __device__ __forceinline__ static unsigned int get_lane_id()
 {
-  // threadIdx.x % WARP_SIZE
-  // return threadIdx.x & (WARP_SIZE - 1);
-  // TODO Эффект не заметен, но в теории должно помогать (меньше инструкций)
   unsigned int r;
   asm volatile("mov.u32 %0, %%laneid;" : "=r"(r));
   return r;
@@ -23,7 +20,7 @@ __device__ __forceinline__ static unsigned int get_lane_id()
 
 __device__ __forceinline__ static unsigned lanemask_lt()
 {
-  // TODO Эквивалент (1u << lane_id) - 1), помогло
+  // Эквивалент (1u << lane_id) - 1)
   unsigned int r;
   asm volatile("mov.u32 %0, %%lanemask_lt;" : "=r"(r));
   return r;
@@ -39,7 +36,6 @@ __device__ __forceinline__ static float fused_half_area(const AABB& a, const AAB
 
 __device__ __forceinline__ static unsigned long long delta(const MortonCode* morton_codes, unsigned int l, unsigned int r)
 {
-  // TODO ldg кеш помог
   return (static_cast<unsigned long long>(__ldg(&morton_codes[l])) << 32 | l) ^ (static_cast<unsigned long long>(__ldg(&morton_codes[r])) << 32 | r);
 }
 
@@ -61,7 +57,6 @@ __device__ __forceinline__ static unsigned int load_cluster_id(
   curassert(start <= end, 2349005);
   unsigned int index = get_lane_id() - offset;
   bool is_valid = index < min(end - start, MERGING_THRESHOLD);
-  // TODO тут ldg кеш не изменил скорости работы
   if (is_valid) cluster_id = cluster_ids[start + index];
   unsigned int n_valid_clusters = __popc(__ballot_sync(ALL_THREADS, is_valid && cluster_id != INVALID_INDEX));
   return n_valid_clusters;
@@ -96,7 +91,6 @@ __device__ __forceinline__ static unsigned int merge_clusters_create_bvh2_node(
   unsigned int merges_count = __popc(merge_mask);
 
   unsigned int cluster_start_id = INVALID_INDEX;
-  // TODO merges_count > 0 сделало ХУЖЕ
   if (lane_id == 0) cluster_start_id = atomicAdd(n_clusters, merges_count);
   cluster_start_id = __shfl_sync(ALL_THREADS, cluster_start_id, 0);
   curassert(cluster_start_id != INVALID_INDEX, 66602491);
@@ -107,10 +101,8 @@ __device__ __forceinline__ static unsigned int merge_clusters_create_bvh2_node(
   if (should_merge) {
     cluster_aabb = AABB::union_of(cluster_aabb, neighbor_cluster_aabb);
     BVH2Node node{cluster_aabb, cluster_id, neighbor_cluster_id};
-    // cluster_id = cluster_start_id + __popc(merge_mask & (1u << lane_id) - 1);
     cluster_id = cluster_start_id + __popc(merge_mask & lanemask_lt());
 
-    // TODO Сильно помогло
     reinterpret_cast<uint4*>(&nodes[cluster_id])[0] = reinterpret_cast<uint4*>(&node)[0];
     reinterpret_cast<uint4*>(&nodes[cluster_id])[1] = reinterpret_cast<uint4*>(&node)[1];
   }
@@ -136,10 +128,8 @@ __device__ __forceinline__ unsigned int find_nearest_neighbor(unsigned int warp_
 {
   curassert(warp_n_clusters <= WARP_SIZE, 81387392);
   const unsigned int lane_id = get_lane_id();
-  // TODO Замена на unsigned long long не помогла
   uint2 nearest = make_uint2(INVALID_INDEX, INVALID_INDEX);
 
-  // #pragma unroll TODO Не помогло
   for (unsigned int radius = 1; radius <= SEARCH_RADIUS; ++radius) {
     const unsigned int neighbor_index = lane_id + radius;
     unsigned int area = ~0u;
@@ -183,7 +173,7 @@ __device__ __forceinline__ static void ploc_merge(
   unsigned int n_right_clusters = load_cluster_id(r_start, r_end, n_left_clusters, cluster_ids, cluster_id);
   unsigned int warp_n_clusters = n_left_clusters + n_right_clusters;
 
-  AABB cluster_aabb{};  // TODO Фигурные скобки реально помогают
+  AABB cluster_aabb{};
   if (lane_id < warp_n_clusters) {
     cluster_aabb = nodes[cluster_id].aabb;
   }
@@ -196,6 +186,7 @@ __device__ __forceinline__ static void ploc_merge(
   }
 
   if (lane_id < n_left_clusters + n_right_clusters) cluster_ids[l_start + lane_id] = cluster_id;
+  __threadfence();
 }
 
 __device__ __forceinline__ static void atomic_min_float(float* ptr, float value)
@@ -271,7 +262,6 @@ namespace cuda::hploc
         unsigned int parent = find_parent_id(morton_codes, n_faces, left, right);
         bool is_right_child = (parent == right);
 
-        // TODO Branchless вычисление аргументов для атомика - помогло
         unsigned int atomic_idx = is_right_child ? right : (left - 1);
         unsigned int atomic_val = is_right_child ? left : right;
 
@@ -289,7 +279,6 @@ namespace cuda::hploc
       unsigned int size = right - left + 1;
       bool is_final = is_active && size == n_faces;
       unsigned int warp_mask = __ballot_sync(ALL_THREADS, is_active && (size > MERGING_THRESHOLD) || is_final);
-      const bool has_merge_work = warp_mask != 0;
 
       while (warp_mask) {
         unsigned int target_lane_id = __ffs(warp_mask) - 1;
@@ -297,9 +286,6 @@ namespace cuda::hploc
         ploc_merge(target_lane_id, left, right, split, is_final, nodes, cluster_ids, n_clusters);
         warp_mask &= (warp_mask - 1);
       }
-
-      // TODO Перенос __threadfence из ploc_merge дал небольшой прирост по производительности
-      if (has_merge_work) __threadfence();
     }
   }
 
@@ -317,7 +303,6 @@ namespace cuda::hploc
 
     AABB local_bounds = AABB::neutral();
 
-    // TODO GRID-STRIDE LOOP - кеширование + планировщик, помогает
     for (unsigned int index = base_index; index < n_faces; index += thread_count) {
       const unsigned int base_face = index * 3;
       const unsigned int f0 = __ldg(&faces[base_face + 0]);
@@ -346,7 +331,6 @@ namespace cuda::hploc
 
       local_bounds = AABB::union_of(local_bounds, aabb);
 
-      // TODO Очень сильно ускоряет (4.7 ms -> 3.8 ms)
       BVH2Node node{aabb, INVALID_INDEX, index};
       reinterpret_cast<uint4*>(&nodes[index])[0] = reinterpret_cast<const uint4*>(&node)[0];
       reinterpret_cast<uint4*>(&nodes[index])[1] = reinterpret_cast<const uint4*>(&node)[1];

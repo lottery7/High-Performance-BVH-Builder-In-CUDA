@@ -49,11 +49,6 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
           stream));
   DeviceBuffer<uint8_t> temp_storage(temp_storage_bytes, stream);
 
-  CUDA_SAFE_CALL(cudaFuncSetAttribute(cuda::hploc::build_kernel, cudaFuncAttributePreferredSharedMemoryCarveout, cudaSharedmemCarveoutMaxL1));
-  CUDA_SAFE_CALL(cudaFuncSetCacheConfig(cuda::hploc::build_kernel, cudaFuncCachePreferL1));
-  CUDA_SAFE_CALL(cudaFuncSetAttribute(cuda::hploc::build_leaves_kernel, cudaFuncAttributePreferredSharedMemoryCarveout, cudaSharedmemCarveoutMaxL1));
-  CUDA_SAFE_CALL(cudaFuncSetCacheConfig(cuda::hploc::build_leaves_kernel, cudaFuncCachePreferL1));
-
   CUDA_SYNC_STREAM(stream);
 
   benchmark::GpuStageProfiler prof(stream, benchmark_iters());
@@ -96,7 +91,7 @@ RayTracingResult run_hploc(cudaStream_t stream, const cuda::Scene& scene, cuda::
             clusters_sorted.get(),
             n_faces,
             0,
-            30,
+            32,
             stream));
     prof.record_stop(Stage::Sort);
 

@@ -61,11 +61,6 @@ RayTracingResult run_hploc_bvh8_compressed(cudaStream_t stream, const cuda::Scen
   DeviceBuffer<unsigned int> bvh8_prim_indices(n_faces, stream);
   DeviceBuffer<unsigned int> n_bvh8_leaves(1, stream);
 
-  CUDA_SAFE_CALL(cudaFuncSetAttribute(cuda::hploc::build_kernel, cudaFuncAttributePreferredSharedMemoryCarveout, cudaSharedmemCarveoutMaxL1));
-  CUDA_SAFE_CALL(cudaFuncSetCacheConfig(cuda::hploc::build_kernel, cudaFuncCachePreferL1));
-  CUDA_SAFE_CALL(cudaFuncSetAttribute(cuda::hploc::build_leaves_kernel, cudaFuncAttributePreferredSharedMemoryCarveout, cudaSharedmemCarveoutMaxL1));
-  CUDA_SAFE_CALL(cudaFuncSetCacheConfig(cuda::hploc::build_leaves_kernel, cudaFuncCachePreferL1));
-
   CUDA_SYNC_STREAM(stream);
 
   benchmark::GpuStageProfiler prof(stream, benchmark_iters());
