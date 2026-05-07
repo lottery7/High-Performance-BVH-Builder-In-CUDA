@@ -27,6 +27,5 @@ inline const RuntimeConfig& runtime_config_const() { return g_runtime_config; }
 inline int benchmark_iters() { return runtime_config_const().benchmark_iters; }
 
 struct RayTracingResult {
-  image32i face_ids;
   image32f ao;
 };

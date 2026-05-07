@@ -175,10 +175,10 @@ __device__ static bool any_hit_from(
     const unsigned int* __restrict__ faces,
     const BVH8Node* __restrict__ nodes,
     const unsigned int* __restrict__ prim_indices,
-    int ignore_face)
+    int ignore_face,
+    const float t_max)
 {
   const float t_min = 1e-4f;
-  const float t_max = FLT_MAX;
 
   unsigned int stack[bvh_stack_size];
   unsigned int sp = 0;
@@ -221,7 +221,7 @@ __device__ static bool any_hit_from(
       float tmin = fmaxf(tminy, fminf(t0z, t1z));
       float tmax = fminf(tmaxy, fmaxf(t0z, t1z));
 
-      if (tmax >= tmin && tmax >= t_min) {
+      if (tmax >= tmin && tmax >= t_min && tmin <= t_max) {
         if ((imask & (1u << i)) != 0u) {
           const unsigned int child_index = node.v1.x + count_bits_below(imask, i);
           if (has_next_node) stack[sp++] = next_node_index;
@@ -267,8 +267,8 @@ namespace cuda
       const BVH8Node* bvh_nodes,
       const unsigned int* prim_indices,
       const unsigned int root_index,
-      int* face_id,
       float* ambient_occlusion,
+      const float* ao_radius,
       const CameraView* camera)
   {
     const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -300,7 +300,7 @@ namespace cuda
         face_normal);
 
     const unsigned int idx = j * camera->K.width + i;
-    face_id[idx] = face_id_best;
+    const float ao_radius_value = *ao_radius;
 
     float ao = 1.0f;
 
@@ -337,7 +337,7 @@ namespace cuda
             tangent.z * d_local.x + bitangent.z * d_local.y + n.z * d_local.z);
         float3 inv_d = inverse_float3(d);
 
-        if (any_hit_from(root_index, offset_origin, d, inv_d, vertices, faces, bvh_nodes, prim_indices, face_id_best)) {
+        if (any_hit_from(root_index, offset_origin, d, inv_d, vertices, faces, bvh_nodes, prim_indices, face_id_best, ao_radius_value)) {
           ++hits;
         }
       }

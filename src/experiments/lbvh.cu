@@ -27,6 +27,7 @@ RayTracingResult run_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cud
   DeviceBuffer<BVH2Node> bvh(n_nodes, stream);
   DeviceBuffer<AABB> primitives_aabb(n_faces, stream);
   DeviceBuffer<AABB> scene_aabb(1, stream);
+  DeviceBuffer<float> ao_radius(1, stream);
   DeviceBuffer<MortonCode> morton_codes(n_faces, stream);
   DeviceBuffer<MortonCode> morton_codes_sorted(n_faces, stream);
   DeviceBuffer<unsigned int> indices(n_faces, stream);
@@ -112,13 +113,14 @@ RayTracingResult run_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cud
     prof.record_stop(Stage::TotalBuild);
 
     prof.record_start(Stage::RayTracing);
+    cuda::compute_ao_radius(stream, scene_aabb, ao_radius);
     cuda::rt_bvh2_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene_gpu.d_vertices,
         scene_gpu.d_faces,
         bvh,
         0,
-        fb.d_face_id,
         fb.d_ao,
+        ao_radius,
         scene_gpu.d_camera);
     prof.record_stop(Stage::RayTracing);
 
@@ -171,8 +173,8 @@ RayTracingResult run_lbvh(cudaStream_t stream, const cuda::Scene& scene_gpu, cud
   report_sah(stream, bvh.get(), n_nodes);
 
   RayTracingResult res;
-  fb.readback(res.face_ids, res.ao);
-  save_framebuffers(results_dir, "with_" EXPERIMENT_NAME, res.face_ids, res.ao);
+  fb.readback(res.ao);
+  save_framebuffers(results_dir, "with_" EXPERIMENT_NAME, res.ao);
 
   CUDA_SYNC_STREAM(stream);
 

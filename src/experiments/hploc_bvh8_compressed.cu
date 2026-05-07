@@ -30,6 +30,7 @@ RayTracingResult run_hploc_bvh8_compressed(cudaStream_t stream, const cuda::Scen
 
   DeviceBuffer<BVH2Node> bvh2_nodes(n_nodes_capacity, stream);
   DeviceBuffer<AABB> scene_aabb(1, stream);
+  DeviceBuffer<float> ao_radius(1, stream);
   DeviceBuffer<MortonCode> morton_codes(n_faces, stream);
   DeviceBuffer<MortonCode> morton_codes_sorted(n_faces, stream);
   DeviceBuffer<unsigned int> clusters(n_nodes_capacity, stream);
@@ -141,14 +142,15 @@ RayTracingResult run_hploc_bvh8_compressed(cudaStream_t stream, const cuda::Scen
     prof.record_stop(Stage::TotalBuild);
 
     prof.record_start(Stage::RayTracing);
+    cuda::compute_ao_radius(stream, scene_aabb, ao_radius);
     cuda::rt_bvh8_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene.d_vertices,
         scene.d_faces,
         bvh8_nodes,
         bvh8_prim_indices,
         0,
-        fb.d_face_id,
         fb.d_ao,
+        ao_radius,
         scene.d_camera);
     prof.record_stop(Stage::RayTracing);
 
@@ -196,8 +198,8 @@ RayTracingResult run_hploc_bvh8_compressed(cudaStream_t stream, const cuda::Scen
   wide_bvh_sah::report_nexus_bvh8_sah(stream, reinterpret_cast<cuda::nexus_bvh_wide::BVH8Node*>(bvh8_nodes.get()), n_wide_nodes);
 
   RayTracingResult res;
-  fb.readback(res.face_ids, res.ao);
-  save_framebuffers(results_dir, "with_" EXPERIMENT_NAME, res.face_ids, res.ao);
+  fb.readback(res.ao);
+  save_framebuffers(results_dir, "with_" EXPERIMENT_NAME, res.ao);
 
   return res;
 }

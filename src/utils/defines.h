@@ -12,7 +12,6 @@
 #define MAX_GRID_SIZE_Y 256
 
 #define AO_SAMPLES 8
-#define NO_FACE_ID (-1)
 #define NO_AMBIENT_OCCLUSION (-1.0f)
 #define INVALID_INDEX 0xFFFFFFFFu
 

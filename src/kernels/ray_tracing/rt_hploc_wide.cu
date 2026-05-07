@@ -156,10 +156,10 @@ __device__ static bool hploc_wide_any_hit_from(
     const float* __restrict__ vertices,
     const unsigned int* __restrict__ faces,
     const WideBVHNode<Arity>* __restrict__ nodes,
-    int ignore_face)
+    int ignore_face,
+    const float t_max)
 {
   const float t_min = 1e-4f;
-  const float t_max = FLT_MAX;
 
   unsigned int stack[hploc_wide_bvh_stack_size];
   unsigned int sp = 0;
@@ -220,8 +220,8 @@ namespace cuda
       const float* vertices,
       const unsigned int* faces,
       const WideBVHNode<Arity>* bvh_nodes,
-      int* face_id,
       float* ambient_occlusion,
+      const float* ao_radius,
       const CameraView* camera)
   {
     const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -241,7 +241,7 @@ namespace cuda
     hploc_wide_closest_hit(ray_origin, ray_direction, inv_ray_direction, bvh_nodes, vertices, faces, 1e-6f, t_best, face_id_best, face_normal);
 
     const unsigned int idx = j * camera->K.width + i;
-    face_id[idx] = face_id_best;
+    const float ao_radius_value = *ao_radius;
 
     float ao = 1.0f;
     if (face_id_best >= 0) {
@@ -277,7 +277,7 @@ namespace cuda
             tangent.z * d_local.x + bitangent.z * d_local.y + n.z * d_local.z);
         const float3 inv_d = hploc_wide_inverse_float3(d);
 
-        if (hploc_wide_any_hit_from(offset_origin, d, inv_d, vertices, faces, bvh_nodes, face_id_best)) ++hits;
+        if (hploc_wide_any_hit_from(offset_origin, d, inv_d, vertices, faces, bvh_nodes, face_id_best, ao_radius_value)) ++hits;
       }
       ao = 1.0f - static_cast<float>(hits) / static_cast<float>(AO_SAMPLES);
     }
@@ -289,15 +289,15 @@ namespace cuda
       const float* vertices,
       const unsigned int* faces,
       const WideBVHNode4* bvh_nodes,
-      int* face_id,
       float* ambient_occlusion,
+      const float* ao_radius,
       const CameraView* camera);
 
   template __global__ void rt_hploc_wide_kernel<8>(
       const float* vertices,
       const unsigned int* faces,
       const WideBVHNode8* bvh_nodes,
-      int* face_id,
       float* ambient_occlusion,
+      const float* ao_radius,
       const CameraView* camera);
 }  // namespace cuda

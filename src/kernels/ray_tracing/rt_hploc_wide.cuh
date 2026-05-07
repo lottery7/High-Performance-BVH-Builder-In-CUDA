@@ -10,7 +10,7 @@ namespace cuda
       const float* vertices,
       const unsigned int* faces,
       const WideBVHNode<Arity>* bvh_nodes,
-      int* face_id,
       float* ambient_occlusion,
+      const float* ao_radius,
       const CameraView* camera);
 }  // namespace cuda

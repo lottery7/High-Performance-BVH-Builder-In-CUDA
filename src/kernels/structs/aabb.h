@@ -20,6 +20,14 @@ struct AABB {
 
   __host__ __device__ __forceinline__ float surface_area() const { return 2.0f * half_area(); }
 
+  __host__ __device__ __forceinline__ float diagonal() const
+  {
+    const float dx = max_x - min_x;
+    const float dy = max_y - min_y;
+    const float dz = max_z - min_z;
+    return sqrtf(fmaf(dx, dx, fmaf(dy, dy, dz * dz)));
+  }
+
   __host__ __device__ __forceinline__ float half_area() const
   {
     float dx = max_x - min_x;

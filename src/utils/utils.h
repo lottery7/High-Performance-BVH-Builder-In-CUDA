@@ -105,13 +105,12 @@ size_t count_diffs(const TypedImage<T>& a, const TypedImage<T>& b, T threshold)
   return count;
 }
 
-inline void save_framebuffers(const std::string& results_dir, const std::string& suffix, const image32i& face_ids, const image32f& ao)
+inline void save_framebuffers(const std::string& results_dir, const std::string& suffix, const image32f& ao)
 {
   std::string suffix_without_spaces(suffix);
   std::transform(suffix_without_spaces.begin(), suffix_without_spaces.end(), suffix_without_spaces.begin(), [](unsigned char c) {
     return std::isspace(c) ? '_' : c;
   });
-  debug_io::dumpImage(results_dir + "/face_ids_" + suffix_without_spaces + ".bmp", debug_io::randomMapping(face_ids, NO_FACE_ID));
   debug_io::dumpImage(results_dir + "/ambient_occlusion_" + suffix_without_spaces + ".bmp", debug_io::depthMapping(ao));
 }
 
@@ -123,9 +122,7 @@ inline void validate_against_ground_truth(
 {
   constexpr double max_errors_percents = 3.0;
   unsigned int ao_errors = count_diffs(ground_truth_res.ao, cmp_res.ao, 0.01f);
-  unsigned int face_errors = count_diffs(ground_truth_res.face_ids, cmp_res.face_ids, 1);
   rassert(ao_errors < width * height / 100 * max_errors_percents, 345341512354123ULL, ao_errors, to_percent(ao_errors, width * height));
-  rassert(face_errors < width * height / 100 * max_errors_percents, 3453415123546587ULL, face_errors, to_percent(face_errors, width * height));
 }
 
 inline void report_sah(const std::vector<BVH2Node>& bvh_nodes)

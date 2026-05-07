@@ -135,10 +135,10 @@ __device__ static bool any_hit_from(
     const float* __restrict__ vertices,
     const unsigned int* __restrict__ faces,
     const BVH2Node* __restrict__ nodes,
-    int ignore_face)
+    int ignore_face,
+    const float t_max)
 {
   const float t_min = 1e-4f;
-  const float t_max = FLT_MAX;
 
   unsigned int stack[bvh_stack_size];
   unsigned int sp = 0;
@@ -188,8 +188,8 @@ namespace cuda
       const unsigned int* faces,
       const BVH2Node* bvh_nodes,
       const unsigned int root_index,
-      int* face_id,
       float* ambient_occlusion,
+      const float* ao_radius,
       const CameraView* camera)
   {
     const unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -220,7 +220,7 @@ namespace cuda
         face_normal);
 
     const unsigned int idx = j * camera->K.width + i;
-    face_id[idx] = face_id_best;
+    const float ao_radius_value = *ao_radius;
 
     float ao = 1.0f;
 
@@ -256,7 +256,7 @@ namespace cuda
             tangent.z * d_local.x + bitangent.z * d_local.y + n.z * d_local.z);
         float3 inv_d = inverse_float3(d);
 
-        if (any_hit_from(root_index, offset_origin, d, inv_d, vertices, faces, bvh_nodes, face_id_best)) ++hits;
+        if (any_hit_from(root_index, offset_origin, d, inv_d, vertices, faces, bvh_nodes, face_id_best, ao_radius_value)) ++hits;
       }
 
       ao = 1.0f - static_cast<float>(hits) / static_cast<float>(AO_SAMPLES);

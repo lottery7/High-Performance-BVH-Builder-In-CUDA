@@ -16,6 +16,8 @@ namespace cuda
 
   void compute_scene_aabb(cudaStream_t stream, const AABB* __restrict__ d_aabbs, int count, AABB* __restrict__ d_scene_aabb);
 
+  void compute_ao_radius(cudaStream_t stream, const AABB* __restrict__ d_scene_aabb, float* __restrict__ d_ao_radius);
+
   __global__ void compute_morton_codes_kernel(
       const AABB* __restrict__ scene_aabb,
       const unsigned int* __restrict__ faces,

@@ -41,6 +41,7 @@ namespace
 
     DeviceBuffer<BVH2Node> bvh2_nodes(n_nodes_capacity, stream);
     DeviceBuffer<AABB> scene_aabb(1, stream);
+    DeviceBuffer<float> ao_radius(1, stream);
     DeviceBuffer<MortonCode> morton_codes(n_faces, stream);
     DeviceBuffer<MortonCode> morton_codes_sorted(n_faces, stream);
     DeviceBuffer<unsigned int> clusters(n_nodes_capacity, stream);
@@ -144,12 +145,13 @@ namespace
       prof.record_stop(Stage::TotalBuild);
 
       prof.record_start(Stage::RayTracing);
+      cuda::compute_ao_radius(stream, scene_aabb, ao_radius);
       cuda::rt_hploc_wide_kernel<Arity><<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
           scene.d_vertices,
           scene.d_faces,
           wide_nodes,
-          fb.d_face_id,
           fb.d_ao,
+          ao_radius,
           scene.d_camera);
       prof.record_stop(Stage::RayTracing);
 
@@ -198,8 +200,8 @@ namespace
     std::cout << name << " total pipeline times (in ms) - " << prof.median(Stage::Total) << std::endl;
 
     RayTracingResult res;
-    fb.readback(res.face_ids, res.ao);
-    save_framebuffers(results_dir, "with_" + name, res.face_ids, res.ao);
+    fb.readback(res.ao);
+    save_framebuffers(results_dir, "with_" + name, res.ao);
 
     return res;
   }

@@ -29,6 +29,9 @@
 
 namespace
 {
+  constexpr unsigned int render_width = 1920;
+  constexpr unsigned int render_height = 1080;
+
   using ExperimentRunner = std::function<RayTracingResult(cudaStream_t, cuda::Scene&, cuda::Framebuffers&, const std::string&)>;
 
   struct ExperimentSpec {
@@ -44,6 +47,22 @@ namespace
       "    run_experiments --bench_iters 5 --disable_warmup --experiments hploc_bvh4 --scenes data/hairball/hairball.obj --device 0";
 
   [[noreturn]] void throw_usage(const std::string& message) { throw std::runtime_error(message + "\n" + usage_text); }
+
+  void override_camera_resolution(CameraView& camera, unsigned int new_w, unsigned int new_h)
+  {
+    const unsigned int old_h = camera.K.height;
+    const float old_pixel_y = camera.K.pixel_size_mm[1];
+    const float new_pixel = static_cast<float>(old_h) * old_pixel_y / static_cast<float>(new_h);
+
+    camera.K.width = new_w;
+    camera.K.height = new_h;
+    camera.K.pixel_size_mm[0] = new_pixel;
+    camera.K.pixel_size_mm[1] = new_pixel;
+    camera.K.fx = camera.K.focal_mm / new_pixel;
+    camera.K.fy = camera.K.focal_mm / new_pixel;
+    camera.K.cx = 0.5f * static_cast<float>(new_w);
+    camera.K.cy = 0.5f * static_cast<float>(new_h);
+  }
 
   bool is_option_name(std::string_view value) { return value.size() >= 2 && value[0] == '-' && value[1] == '-'; }
 
@@ -251,6 +270,7 @@ namespace
 
     std::cout << "Loading camera " << camera_path << "...\n";
     CameraView camera = load_view_state(camera_path);
+    override_camera_resolution(camera, render_width, render_height);
 
     const double loading_data_time = loading_t.elapsed();
     const unsigned int width = camera.K.width;

@@ -11,7 +11,7 @@ namespace cuda
       const BVH8Node* bvh_nodes,
       const unsigned int* prim_indices,
       unsigned int root_index,
-      int* face_id,
       float* ambient_occlusion,
+      const float* ao_radius,
       const CameraView* camera);
 }  // namespace cuda

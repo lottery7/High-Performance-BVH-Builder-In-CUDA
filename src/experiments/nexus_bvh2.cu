@@ -4,6 +4,7 @@
 #include "../kernels/helpers/helpers.cuh"
 #include "../kernels/nexus_bvh/nexus_bvh2.cuh"
 #include "../utils/defines.h"
+#include "../utils/device_buffer.h"
 #include "../utils/utils.h"
 #include "benchmark.h"
 #include "kernels/hploc/hploc_bvh2.cuh"
@@ -25,6 +26,7 @@ RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, c
 
   BVH2Node* d_bvh = nullptr;
   cuda::nexus_bvh::Workspace workspace;
+  DeviceBuffer<float> ao_radius(1, stream);
 
   CUDA_SAFE_CALL(cudaMallocAsync(&d_bvh, sizeof(BVH2Node) * max_nodes, stream));
   cuda::nexus_bvh::allocate_workspace(stream, workspace, n_faces);
@@ -88,13 +90,14 @@ RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, c
     prof.record_stop(Stage::TotalBuild);
 
     prof.record_start(Stage::RayTracing);
+    cuda::compute_ao_radius(stream, build_state.scene_bounds, ao_radius);
     cuda::rt_bvh2_kernel<<<compute_grid(width, height), DEFAULT_GROUP_SIZE_2D, 0, stream>>>(
         scene.d_vertices,
         scene.d_faces,
         d_bvh,
         max_nodes - 1,
-        fb.d_face_id,
         fb.d_ao,
+        ao_radius,
         scene.d_camera);
     prof.record_stop(Stage::RayTracing);
     prof.record_stop(Stage::Total);
@@ -129,8 +132,8 @@ RayTracingResult run_nexus_bvh2(cudaStream_t stream, const cuda::Scene& scene, c
   std::cout << EXPERIMENT_NAME " total pipeline times (in ms) - " << prof.median(Stage::Total) << std::endl;
 
   RayTracingResult result;
-  fb.readback(result.face_ids, result.ao);
-  save_framebuffers(results_dir, "with_" EXPERIMENT_NAME, result.face_ids, result.ao);
+  fb.readback(result.ao);
+  save_framebuffers(results_dir, "with_" EXPERIMENT_NAME, result.ao);
 
   cuda::nexus_bvh::free_workspace(stream, workspace);
   CUDA_SAFE_CALL(cudaFreeAsync(d_bvh, stream));
